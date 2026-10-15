@@ -102,24 +102,31 @@ jobs:
           } >> deploy/.env
           chmod 600 deploy/.env
 
-      - name: Configure SSH
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Upload and start
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
         run: |
           set -euo pipefail
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes"
+          install -m 700 -d ~/.ssh
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          if [ -n "${SSHPASS:-}" ]; then
+            # password auth (set DEPLOY_SSH_PASSWORD); takes priority over the key
+            sudo apt-get install -y sshpass >/dev/null
+            SSH="sshpass -e ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
+            SCP="sshpass -e scp -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
+          else
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes"
+            SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes"
+          fi
           $SSH "$TARGET" "mkdir -p ~/vynk && chmod 700 ~/vynk"
-          scp -i ~/.ssh/deploy_key deploy/docker-compose.yml deploy/.env "$TARGET":~/vynk/
+          $SCP deploy/docker-compose.yml deploy/.env "$TARGET":~/vynk/
           echo "$GHCR_TOKEN" | $SSH "$TARGET" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "$TARGET" "cd ~/vynk && chmod 600 .env && docker compose pull && docker compose up -d --remove-orphans"
 
