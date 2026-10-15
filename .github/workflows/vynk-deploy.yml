@@ -121,7 +121,7 @@ jobs:
           $SSH "$TARGET" "mkdir -p ~/vynk && chmod 700 ~/vynk"
           scp -i ~/.ssh/deploy_key deploy/docker-compose.yml deploy/.env "$TARGET":~/vynk/
           echo "$GHCR_TOKEN" | $SSH "$TARGET" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
-          $SSH "$TARGET" "cd ~/vynk && chmod 600 .env && docker compose pull && docker compose up -d --remove-orphans && docker image prune -f"
+          $SSH "$TARGET" "cd ~/vynk && chmod 600 .env && docker compose pull && docker compose up -d --remove-orphans"
 
       - name: Health check
         run: |
