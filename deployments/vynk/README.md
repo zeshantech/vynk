@@ -41,7 +41,7 @@ Everything runs on one domain: the app at `/`, admin at `/god-mode/`, public boa
 ## 5. GitHub (repo Settings -> Secrets and variables -> Actions)
 
 Secrets: `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (private key).
-Variables: `INFISICAL_PROJECT_SLUG`, optional `INFISICAL_ENV` (default `prod`), optional `INFISICAL_DOMAIN` (default `https://app.infisical.com`; set `https://eu.infisical.com` for EU), and finally `DEPLOY_ENABLED=true`.
+Variables: `INFISICAL_PROJECT_ID`, optional `INFISICAL_ENV` (default `prod`), optional `INFISICAL_DOMAIN` (default `https://app.infisical.com`; set `https://eu.infisical.com` for EU), and finally `DEPLOY_ENABLED=true`.
 Also create an environment named `production` (Settings -> Environments); add a required reviewer if you want manual approval.
 
 Until `DEPLOY_ENABLED=true`, the workflow only builds and pushes images.

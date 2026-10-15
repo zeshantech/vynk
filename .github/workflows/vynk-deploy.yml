@@ -85,7 +85,7 @@ jobs:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
           domain: ${{ vars.INFISICAL_DOMAIN || 'https://app.infisical.com' }}
-          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          project-id: ${{ vars.INFISICAL_PROJECT_ID }}
           env-slug: ${{ vars.INFISICAL_ENV || 'prod' }}
           export-type: file
           file-output-path: /deploy/.env
