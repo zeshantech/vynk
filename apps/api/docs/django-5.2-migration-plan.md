@@ -7,13 +7,13 @@
 
 ## 1. Executive summary
 
-The Plane API was audited end-to-end for Django 5.0/5.1/5.2 breaking changes (12 targeted code scans, a full settings audit, a 129-file migration scan, and per-dependency compatibility research). **The application code is already Django 5.2-clean.** Every breaking-change scan came back unaffected.
+The Vynk API was audited end-to-end for Django 5.0/5.1/5.2 breaking changes (12 targeted code scans, a full settings audit, a 129-file migration scan, and per-dependency compatibility research). **The application code is already Django 5.2-clean.** Every breaking-change scan came back unaffected.
 
-The migration is therefore **almost entirely a coordinated third-party dependency bump plus verification** — not a code rewrite. Risk is **low–medium** and concentrated in the dependency layer, not in Plane's own code.
+The migration is therefore **almost entirely a coordinated third-party dependency bump plus verification** — not a code rewrite. Risk is **low–medium** and concentrated in the dependency layer, not in Vynk's own code.
 
 **No runtime or infrastructure blockers:**
 
-| Prerequisite | Django 5.2 requires | Plane has                       | Status |
+| Prerequisite | Django 5.2 requires | Vynk has                       | Status |
 | ------------ | ------------------- | ------------------------------- | ------ |
 | Python       | ≥ 3.10              | 3.12.x (Docker + CI)            | ✅     |
 | PostgreSQL   | ≥ 14 (drops PG 13)  | 15.7-alpine (all compose files) | ✅     |
@@ -116,11 +116,11 @@ Policy: **latest stable**, with **evidence-based safe overrides** where "latest"
 | ---------------------------- | ------- | -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Django**                   | 4.2.30  | **5.2.x** (latest 5.2 LTS patch) | 5.2.0       | Stay on **5.2 LTS** — do **not** jump to 6.0 (not LTS). Confirm newest 5.2.\* patch at execution time.                                                                                                  |
 | djangorestframework          | 3.15.2  | **3.17.1**                       | 3.16.0      | 3.15 supports Django only ≤5.0. Verify `UniqueTogetherValidator`/conditional-`UniqueConstraint` behavior (3.16 tightened nullable/partial handling).                                                    |
-| channels                     | 4.1.0   | **4.3.2**                        | 4.2.1       | 4.3 raises `asgiref>=3.9` (auto-resolved) and makes Daphne an optional extra — Plane serves ASGI via uvicorn/gunicorn, so no impact.                                                                    |
+| channels                     | 4.1.0   | **4.3.2**                        | 4.2.1       | 4.3 raises `asgiref>=3.9` (auto-resolved) and makes Daphne an optional extra — Vynk serves ASGI via uvicorn/gunicorn, so no impact.                                                                    |
 | django-cors-headers          | 4.3.1   | **4.9.0**                        | 4.7.0       | No consumer-facing breaking changes in range. Verify `CORS_ALLOWED_ORIGINS`/`CORS_ALLOW_ALL_ORIGINS` still load.                                                                                        |
-| django-filter                | 24.2    | **25.2**                         | 25.1        | 25.x removed built-in DRF schema gen (Plane uses drf-spectacular → no impact). 25.2 requires Python ≥3.10 (have 3.12).                                                                                  |
+| django-filter                | 24.2    | **25.2**                         | 25.1        | 25.x removed built-in DRF schema gen (Vynk uses drf-spectacular → no impact). 25.2 requires Python ≥3.10 (have 3.12).                                                                                  |
 | django-storages              | 1.14.2  | **1.14.6**                       | 1.14.6      | `url_protocol` defaults to **HTTPS** when unset (1.14.6); `config`→`client_config` deprecation. Verify S3 settings + generated URL scheme.                                                              |
-| django-redis                 | 5.4.0   | **7.0.0**                        | 6.0.0       | 7.0 renamed zset/hash helper params (not used by Plane) and drops Django 5.0 (irrelevant). **Verify redis-py floor** (`redis==5.0.4`) satisfies 7.0; if not, pin **6.0.0** instead.                     |
+| django-redis                 | 5.4.0   | **7.0.0**                        | 6.0.0       | 7.0 renamed zset/hash helper params (not used by Vynk) and drops Django 5.0 (irrelevant). **Verify redis-py floor** (`redis==5.0.4`) satisfies 7.0; if not, pin **6.0.0** instead.                     |
 | django_celery_beat           | 2.6.0   | **2.9.0**                        | 2.8.1       | **Skip 2.8.0** (shipped a regression, fixed in 2.8.1). 2.9 adds Django 6.0.                                                                                                                             |
 | django-celery-results        | 2.5.1   | **2.6.0**                        | 2.6.0       | Note: `django_celery_results` is **not** in `INSTALLED_APPS` here (packaged result backend only), so its DB migrations don't apply — no `migrate` action needed. Result-expiry timing changed slightly. |
 | drf-spectacular              | 0.28.0  | **0.29.0**                       | 0.29.0      | First version with the Django 5.2 classifier. **Regenerate & commit the OpenAPI schema** after upgrade.                                                                                                 |
@@ -134,7 +134,7 @@ Policy: **latest stable**, with **evidence-based safe overrides** where "latest"
 | ------------------------------------ | ---------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | psycopg / psycopg-binary / psycopg-c | 3.3.0 (×3) | **3.3.4** (×3)        | Bump all three in lockstep (ABI). Patch-level only.                                                                                                                                                    |
 | whitenoise                           | 6.11.0     | **6.12.0**            | Security fix in autorefresh (dev-only); no breaking changes.                                                                                                                                           |
-| celery                               | 5.4.0      | **5.5.3** (not 5.6.x) | **Override:** 5.6 reverted the SQS→urllib3 change; 5.5.3 is the battle-tested line. Plane uses Redis broker. Pulls `kombu>=5.5`. (Celery itself isn't Django-pinned — already works on 5.2.)           |
+| celery                               | 5.4.0      | **5.5.3** (not 5.6.x) | **Override:** 5.6 reverted the SQS→urllib3 change; 5.5.3 is the battle-tested line. Vynk uses Redis broker. Pulls `kombu>=5.5`. (Celery itself isn't Django-pinned — already works on 5.2.)           |
 | dj-database-url                      | 2.1.0      | **3.0.1** (cautious)  | **Override:** 3.x is a breaking major (engine-registry validation, raised Python floor). 2.1.0 already works on 5.2 — **holding at 2.1.0 is acceptable**. If bumping, verify all DB URL schemes parse. |
 
 ### 5.3 Hold (already compatible; bumping adds churn with no 5.2 benefit)

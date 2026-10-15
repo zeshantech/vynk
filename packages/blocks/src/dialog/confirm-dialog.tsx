@@ -94,7 +94,7 @@ const BUTTON_VARIANTS: Record<TConfirmDialogVariant, ButtonVariant> = {
 };
 
 /**
- * The confirmation dialog every destructive action in Plane funnels through — a titled alert with a
+ * The confirmation dialog every destructive action in Vynk funnels through — a titled alert with a
  * single confirm and a cancel.
  */
 export function ConfirmDialog(props: ConfirmDialogProps) {

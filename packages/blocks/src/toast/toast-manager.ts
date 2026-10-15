@@ -9,7 +9,7 @@ import type { ToastAction, ToastData, ToastVariant } from "@makeplane/propel/com
 import type { ReactNode } from "react";
 
 /**
- * The imperative toast API Plane has always used, re-homed on Propel's toast manager. The exported
+ * The imperative toast API Vynk has always used, re-homed on Propel's toast manager. The exported
  * signatures deliberately mirror the previous in-repo Propel toast module one-for-one so the ~650
  * call sites change nothing but their import path.
  */

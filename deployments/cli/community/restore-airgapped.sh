@@ -120,7 +120,7 @@ function restoreData() {
     fi
 
     if [[ "$dockerServiceStatus" == running* ]]; then
-        echo "Plane Airgapped is running. Please STOP the Plane Airgapped before restoring data."
+        echo "Vynk Airgapped is running. Please STOP the Vynk Airgapped before restoring data."
         exit 1
     fi
 

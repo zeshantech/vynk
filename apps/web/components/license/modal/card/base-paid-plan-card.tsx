@@ -39,7 +39,7 @@ export const BasePaidPlanCard = observer(function BasePaidPlanCard(props: TBaseP
   // states
   const [selectedPlan, setSelectedPlan] = useState<TBillingFrequency>("month");
   const basePlan = getBaseSubscriptionName(planVariant);
-  // Plane details
+  // Vynk details
   const planeName = getSubscriptionName(planVariant);
 
   return (
@@ -70,7 +70,7 @@ export const BasePaidPlanCard = observer(function BasePaidPlanCard(props: TBaseP
         {prices.map((price: TSubscriptionPrice) => (
           <TabsPanel key={price.key} value={price.recurring}>
             <div className="pt-3 text-center">
-              <div className="text-h4-medium">Plane {planeName}</div>
+              <div className="text-h4-medium">Vynk {planeName}</div>
               {renderActionButton(price)}
             </div>
             <div className="px-2 pt-6 pb-2">

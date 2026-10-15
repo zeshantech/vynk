@@ -29,7 +29,7 @@ export type DateRangeSelectProps = DateSelectCommonProps & {
   /**
    * Collapses the trigger label to the shared parts of the two dates — "Jun 10 - 24, 2025" for a
    * range inside one month, "Jan 24 - Feb 02, 2025" inside one year — instead of repeating the
-   * whole date twice. Honoured for the four `formatToken` values Plane ships (`MMM dd, yyyy`,
+   * whole date twice. Honoured for the four `formatToken` values Vynk ships (`MMM dd, yyyy`,
    * `dd/MM/yyyy`, `MM/dd/yyyy`, `yyyy/MM/dd` — see `MERGE_TOKENS`); any other token keeps the whole
    * label on both ends. Ignored when {@link formatLabel} is given. @default false
    */
@@ -45,7 +45,7 @@ export type DateRangeSelectProps = DateSelectCommonProps & {
 type MergeTokenPair = { from: string; to: string };
 
 /**
- * How the merged label is built, per date format Plane ships (`TDateAttributeDisplayOptions` in
+ * How the merged label is built, per date format Vynk ships (`TDateAttributeDisplayOptions` in
  * `packages/types/src/work-item-types/work-item-property-configurations.ts`). The parts the two
  * dates share are printed once, at whichever end of the token they sit:
  *

@@ -522,7 +522,7 @@ function Page() {
 }
 ```
 
-### ❌ Mistake 2: Nested Surfaces (Same Plane)
+### ❌ Mistake 2: Nested Surfaces (Same Vynk)
 
 ```tsx
 // ❌ Wrong: Nested surfaces in same plane

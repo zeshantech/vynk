@@ -81,6 +81,11 @@ def _collect_and_push_metrics() -> None:
         logger.debug("Telemetry disabled, skipping metrics push")
         return
 
+    # Vynk does not ship a default collector: metrics are only pushed to an endpoint the operator configures.
+    if not os.environ.get("OTLP_ENDPOINT"):
+        logger.debug("OTLP_ENDPOINT not set, skipping metrics push")
+        return
+
     # Configure OTEL metrics (gRPC default, or HTTP if OTLP_METRICS_PROTOCOL=http)
     protocol = (os.environ.get("OTLP_METRICS_PROTOCOL") or "grpc").strip().lower()
     export_endpoint = get_otlp_grpc_endpoint() if protocol == "grpc" else get_otlp_http_metrics_url()
@@ -173,7 +178,7 @@ def _collect_and_push_metrics() -> None:
         # Register observable gauges for instance metrics
         meter.create_observable_gauge(
             name="plane_instance_users_total",
-            description="Total number of users in the Plane instance",
+            description="Total number of users in the Vynk instance",
             callbacks=[users_callback],
         )
         meter.create_observable_gauge(

@@ -93,7 +93,7 @@ export type SelectTriggerChromeProps = {
  * `Select.Trigger` and the date blocks share. It renders a real `<button>`, so any base-ui popup
  * part can graft its behavior onto it via `render={<SelectTriggerChrome … />}`.
  *
- * Breadcrumb triggers use Propel breadcrumb chrome; other variants use Plane chrome, including `select` /
+ * Breadcrumb triggers use Propel breadcrumb chrome; other variants use Vynk chrome, including `select` /
  * `select-ghost`, which mirror propel's `comboboxTriggerVariants` look and size scale
  * (`md`/`lg`/`xl`/`2xl`), so a step means the same thing on both. Propel's `elements/combobox`
  * `ComboboxTrigger` itself is still NOT rendered: it hard-codes `min-w-72` (288px) with no width

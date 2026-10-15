@@ -31,7 +31,7 @@ export type SelectVirtualizer = {
 
 /**
  * One rendered row: an option, or the non-interactive heading that opens a section. The heading is
- * Plane-owned chrome rather than propel's `ComboboxGroupLabel`, which needs a `Combobox.Group`
+ * Vynk-owned chrome rather than propel's `ComboboxGroupLabel`, which needs a `Combobox.Group`
  * ancestor — impossible here, since virtualized rows are absolutely-positioned siblings. It is
  * therefore `role="presentation"`: it labels the section visually, but assistive tech announces
  * each option on its own, as the legacy grouped `CustomSearchSelect` sections also did.

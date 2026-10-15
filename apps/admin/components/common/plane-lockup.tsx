@@ -6,7 +6,7 @@
 
 import * as React from "react";
 
-// Plane logo lockup. Not part of @makeplane/propel's icon set, so it is kept as a local asset.
+// Vynk logo lockup. Not part of @makeplane/propel's icon set, so it is kept as a local asset.
 
 type PlaneLockupProps = {
   width?: string | number;

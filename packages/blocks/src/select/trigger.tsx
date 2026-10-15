@@ -20,7 +20,7 @@ import type { SelectTriggerProps } from "./types";
 import { splitSelectVariant } from "./utils";
 
 /**
- * `search-input`'s chips frame. Plane-owned rather than propel's `ComboboxChips`, which hard-codes
+ * `search-input`'s chips frame. Vynk-owned rather than propel's `ComboboxChips`, which hard-codes
  * `min-w-72` (288px) with no width axis — see the Ruling 28 note in `trigger-chrome.tsx`.
  */
 const CHIPS_FRAME_CLASSNAME =

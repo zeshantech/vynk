@@ -3,9 +3,9 @@
 # See the LICENSE file for details.
 
 """
-Core utilities for Plane database routing and request scoping.
+Core utilities for Vynk database routing and request scoping.
 This package contains essential components for managing read replica routing
-and request-scoped context in the Plane application.
+and request-scoped context in the Vynk application.
 """
 
 from .dbrouters import ReadReplicaRouter

@@ -22,7 +22,7 @@ export type ContextMenuProps = {
 };
 
 /**
- * The right-click menu Plane's boards, lists and tables share. Takes the same `{ parentRef, items }`
+ * The right-click menu Vynk's boards, lists and tables share. Takes the same `{ parentRef, items }`
  * contract as the retired UI package's `ContextMenu` and renders it with Propel's context-menu parts.
  *
  * Propel's `ContextMenuTrigger` wants to own its right-click target, but this contract hands us a
