@@ -130,7 +130,7 @@ jobs:
           echo "$GHCR_TOKEN" | $SSH "$TARGET" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           # Ensure the Compose v2 plugin exists (installs a single file under ~/.docker/cli-plugins, per-user only)
           $SSH "$TARGET" 'docker compose version >/dev/null 2>&1 || { mkdir -p ~/.docker/cli-plugins && curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose; }; docker compose version'
-          $SSH "$TARGET" "cd ~/vynk && chmod 600 .env && docker compose pull && docker compose up -d --remove-orphans"
+          $SSH "$TARGET" "cd ~/vynk && chmod 600 .env && docker compose pull && (docker compose up -d --remove-orphans || { echo '--- migrator logs ---'; docker compose logs --no-color --tail 60 migrator; echo '--- ps ---'; docker compose ps -a; exit 1; })"
 
       - name: Health check
         run: |
