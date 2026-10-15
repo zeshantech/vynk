@@ -117,13 +117,13 @@ jobs:
           if [ -n "${SSHPASS:-}" ]; then
             # password auth (set DEPLOY_SSH_PASSWORD); takes priority over the key
             sudo apt-get install -y sshpass >/dev/null
-            SSH="sshpass -e ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
-            SCP="sshpass -e scp -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes"
+            SSH="sshpass -e ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=40"
+            SCP="sshpass -e scp -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=40"
           else
             printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
-            SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes"
-            SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes"
+            SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=40"
+            SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=40"
           fi
           $SSH "$TARGET" "mkdir -p ~/vynk && chmod 700 ~/vynk"
           $SCP deploy/docker-compose.yml deploy/.env "$TARGET":~/vynk/
