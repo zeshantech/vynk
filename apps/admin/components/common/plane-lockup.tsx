@@ -6,7 +6,7 @@
 
 import * as React from "react";
 
-// Vynk logo lockup: mark + wordmark (component keeps its upstream name to avoid churn at call sites).
+// Vynk logo lockup: Vynk wordmark (component keeps its upstream name to avoid churn at call sites).
 
 type PlaneLockupProps = {
   width?: string | number;
@@ -15,12 +15,12 @@ type PlaneLockupProps = {
   color?: string;
 };
 
-export function PlaneLockup({ width = "195", height = "53", className, color = "currentColor" }: PlaneLockupProps) {
+export function PlaneLockup({ width = "170", height = "53", className, color = "currentColor" }: PlaneLockupProps) {
   return (
     <svg
       width={width}
       height={height}
-      viewBox="0 0 195 53"
+      viewBox="0 0 170 53"
       fill={color}
       xmlns="http://www.w3.org/2000/svg"
       className={className}

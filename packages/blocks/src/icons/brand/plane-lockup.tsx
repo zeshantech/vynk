@@ -8,13 +8,13 @@ import * as React from "react";
 
 export type PlaneLockupProps = React.ComponentPropsWithoutRef<"svg">;
 
-// Vynk logo lockup: mark + wordmark (component keeps its upstream name to avoid churn at call sites).
-export function PlaneLockup({ width = "195", height = "53", className, color = "currentColor" }: PlaneLockupProps) {
+// Vynk logo lockup: Vynk wordmark (component keeps its upstream name to avoid churn at call sites).
+export function PlaneLockup({ width = "170", height = "53", className, color = "currentColor" }: PlaneLockupProps) {
   return (
     <svg
       width={width}
       height={height}
-      viewBox="0 0 195 53"
+      viewBox="0 0 170 53"
       fill={color}
       xmlns="http://www.w3.org/2000/svg"
       className={className}
