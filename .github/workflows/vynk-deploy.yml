@@ -135,7 +135,7 @@ jobs:
       - name: Health check
         run: |
           set -euo pipefail
-          url="https://$(grep '^APP_DOMAIN=' deploy/.env | cut -d= -f2-)/api/instances/"
+          url="https://$(grep '^APP_DOMAIN=' deploy/.env | cut -d= -f2- | tr -d "'\"\r")/api/instances/"
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
             [ "$code" = "200" ] && { echo "healthy: $url"; exit 0; }
