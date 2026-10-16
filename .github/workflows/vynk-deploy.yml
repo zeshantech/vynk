@@ -8,7 +8,7 @@ name: Vynk Build & Deploy
 
 on:
   push:
-    branches: [vynk-rebrand] # change to main once you promote the branch
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

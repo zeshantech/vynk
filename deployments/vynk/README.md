@@ -1,6 +1,6 @@
 # Deploying Vynk
 
-Flow: push to `vynk-rebrand` -> GitHub Actions builds 6 images -> pushes to `ghcr.io/<owner>/vynk-*` ->
+Flow: push to `main` -> GitHub Actions builds 6 images -> pushes to `ghcr.io/<owner>/vynk-*` ->
 (if enabled) fetches secrets from Infisical -> copies `docker-compose.yml` + `.env` to the server over SSH -> `docker compose up -d`.
 
 Everything runs on one domain: the app at `/`, admin at `/god-mode/`, public boards at `/spaces/`, live editing at `/live/`.
