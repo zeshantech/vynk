@@ -1,0 +1,13 @@
+# Add to your existing server Caddyfile (replaces the earlier "reverse_proxy 172.20.0.1:8088" block).
+vynk.robustcraft.com {
+	redir /spaces /spaces/ permanent
+	redir /god-mode /god-mode/ permanent
+
+	reverse_proxy /spaces/* vynk-space:3000
+	reverse_proxy /god-mode/* vynk-admin:3000
+	reverse_proxy /live/* vynk-live:3000
+	reverse_proxy /api/* vynk-api:8000
+	reverse_proxy /auth/* vynk-api:8000
+	reverse_proxy /static/* vynk-api:8000
+	reverse_proxy /* vynk-web:3000
+}

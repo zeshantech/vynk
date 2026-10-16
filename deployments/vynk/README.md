@@ -3,7 +3,7 @@
 Flow: push to `main` -> GitHub Actions builds 6 images -> pushes to `ghcr.io/<owner>/vynk-*` ->
 (if enabled) fetches secrets from Infisical -> copies `docker-compose.yml` + `.env` to the server over SSH -> `docker compose up -d`.
 
-Everything runs on one domain: the app at `/`, admin at `/god-mode/`, public boards at `/spaces/`, live editing at `/live/`.
+Everything runs on one domain, routed by the server's existing Caddy (see Caddyfile.snippet): the app at `/`, admin at `/god-mode/`, public boards at `/spaces/`, live editing at `/live/`. Redis is the server's existing one (DB 5).
 
 ## 1. Server (once)
 
