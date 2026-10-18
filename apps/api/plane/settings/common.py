@@ -209,7 +209,7 @@ if bool(os.environ.get("DATABASE_URL")):
     # Set DB_CONN_MAX_AGE=0 to restore one-connection-per-request.
     DATABASES = {
         "default": dj_database_url.config(
-            conn_max_age=int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            conn_max_age=int(os.environ.get("DB_CONN_MAX_AGE", "0")),
             conn_health_checks=True,
         )
     }
