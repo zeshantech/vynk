@@ -13,7 +13,7 @@
 	rate_limit {
 		zone static {
 			key {client_ip}
-			events 300
+			events {$STATIC_RATE_LIMIT_EVENTS:6000}
 			window 1m
 		}
 	}
