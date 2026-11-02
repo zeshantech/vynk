@@ -1,0 +1,189 @@
+name: Deploy to Contabo
+
+# Deploys the Vynk production stack (deployments/contabo) to the Contabo VPS over SSH,
+# with all configuration/secrets pulled from Infisical.
+#
+# It does NOT build images. It deploys the images that "Vynk Build & Deploy" already pushed to GHCR:
+#   - automatically after that workflow succeeds on main (tag = the built commit's 12-char SHA)
+#   - manually via "Run workflow", optionally with an older image tag (this is the rollback path)
+#
+# Off until the repository variable CONTABO_DEPLOY_ENABLED=true. Setup: deployments/contabo/README.md
+
+on:
+  workflow_run:
+    workflows: ["Vynk Build & Deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (12-char commit SHA, e.g. b49b5f9a1c2d). Leave blank for 'latest'."
+        required: false
+        default: ""
+
+concurrency:
+  group: contabo-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy to Contabo
+    if: >-
+      ${{ vars.CONTABO_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: contabo # holds the Contabo-specific secrets/vars; add required reviewers here for manual approval
+    env:
+      REQUIRED_KEYS: >-
+        APP_DOMAIN WEB_URL ACME_EMAIL SECRET_KEY LIVE_SERVER_SECRET_KEY
+        POSTGRES_PASSWORD RABBITMQ_PASSWORD
+        AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_S3_BUCKET_NAME
+    steps:
+      - name: Resolve what to deploy
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ]; then
+            tag="${RUN_SHA::12}"; ref="$RUN_SHA"
+          else
+            tag="${INPUT_TAG:-latest}"; ref="${GITHUB_SHA}"
+          fi
+          # image tags are [A-Za-z0-9_.-]; reject anything else (this value ends up in a remote shell/.env)
+          [[ "$tag" =~ ^[A-Za-z0-9_.-]{1,128}$ ]] || { echo "::error::invalid image tag: $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "prefix=ghcr.io/${REPO_OWNER,,}/vynk" >> "$GITHUB_OUTPUT"
+          echo "Deploying image tag: $tag"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.ref }}
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.18
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ vars.INFISICAL_DOMAIN || 'https://app.infisical.com' }}
+          project-id: ${{ vars.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ vars.INFISICAL_ENV || 'prod' }}
+          secret-path: ${{ vars.INFISICAL_SECRET_PATH || '/' }}
+          export-type: file
+          file-output-path: /deploy/.env
+
+      - name: Validate secrets and build deploy bundle
+        env:
+          IMAGE_PREFIX: ${{ steps.target.outputs.prefix }}
+          IMAGE_TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -s deploy/.env || { echo "::error::Infisical returned no secrets"; exit 1; }
+
+          # Fail early, naming the missing keys (values are never printed).
+          missing=""
+          for k in $REQUIRED_KEYS; do
+            v="$(grep -m1 "^${k}=" deploy/.env | cut -d= -f2- | tr -d "'\"\r " || true)"
+            [ -n "$v" ] || missing="$missing $k"
+          done
+          [ -z "$missing" ] || { echo "::error::Missing/empty in Infisical:$missing"; exit 1; }
+
+          # MinIO-only settings must not leak into an S3 setup.
+          if grep -q '^AWS_S3_ENDPOINT_URL=.\+' deploy/.env; then
+            echo "::error::AWS_S3_ENDPOINT_URL is set in Infisical. Remove it: this stack uses real AWS S3, not MinIO."; exit 1
+          fi
+
+          cp deployments/contabo/docker-compose.yml deploy/docker-compose.yml
+          {
+            echo ""
+            echo "IMAGE_PREFIX=${IMAGE_PREFIX}"
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          } >> deploy/.env
+          chmod 600 deploy/.env
+
+          # Catch interpolation/syntax errors before touching the server (-q: prints nothing, so no secrets in logs).
+          docker compose --env-file deploy/.env -f deploy/docker-compose.yml config -q
+          echo "Bundle OK"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'deploy' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is not set}"
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY secret is not set}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::DEPLOY_KNOWN_HOSTS is not set; trusting the host key on first sight. Pin it (see README) to prevent MITM."
+            ssh-keyscan -T 10 -H "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<EOF
+          Host contabo
+            HostName ${DEPLOY_HOST}
+            User ${DEPLOY_USER}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            PasswordAuthentication no
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 30
+            ServerAliveCountMax 40
+          EOF
+          chmod 600 ~/.ssh/config
+          ssh contabo 'echo "connected as $(whoami) on $(hostname)"'
+
+      - name: Upload and start
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          ssh contabo 'mkdir -p ~/vynk && chmod 700 ~/vynk'
+          scp deploy/docker-compose.yml deploy/.env contabo:~/vynk/
+          echo "$GHCR_TOKEN" | ssh contabo "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          # Ensure the Compose v2 plugin exists (per-user install under ~/.docker/cli-plugins)
+          ssh contabo 'docker compose version >/dev/null 2>&1 || { mkdir -p ~/.docker/cli-plugins && curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose; }; docker compose version'
+          ssh contabo 'cd ~/vynk && chmod 600 .env && for i in 1 2 3; do docker compose pull && break || { [ "$i" = 3 ] && exit 1; sleep 15; }; done'
+          ssh contabo 'cd ~/vynk && docker compose up -d --remove-orphans'
+          # The pull token is short-lived and only needed during the pull; don't leave it on the server.
+          ssh contabo 'docker logout ghcr.io >/dev/null 2>&1 || true'
+          # Reclaim disk from superseded images (only unused images older than 7 days)
+          ssh contabo 'docker image prune -af --filter "until=168h" >/dev/null 2>&1 || true'
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          domain="$(grep -m1 '^APP_DOMAIN=' deploy/.env | cut -d= -f2- | tr -d "'\"\r ")"
+          url="https://${domain}/api/instances/"
+          code=000
+          # First deploy: migrations + TLS issuance can take several minutes.
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
+            [ "$code" = "200" ] && { echo "healthy: $url"; exit 0; }
+            echo "waiting ($i/60): HTTP $code"
+            sleep 10
+          done
+          echo "::error::health check failed for $url (last status: $code)"; exit 1
+
+      - name: Diagnostics on failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        run: |
+          ssh contabo 'cd ~/vynk && echo "--- ps ---" && docker compose ps -a && for s in migrator api proxy plane-db; do echo "--- logs: $s ---"; docker compose logs --no-color --tail 60 $s 2>&1 | sed -E "s#(://[^:/@ ]+:)[^@ ]+@#\1***@#g"; done'
