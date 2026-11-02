@@ -141,6 +141,8 @@ class Project(BaseModel):
         return f"{self.name} <{self.workspace.name}>"
 
     FORBIDDEN_IDENTIFIER_CHARS_PATTERN = r"^.*[&+,:;$^}{*=?@#|'<>.()%!-].*$"
+    # Names may use - + _ and spaces; identifiers stay strict because they form issue keys such as ABC-12.
+    FORBIDDEN_NAME_CHARS_PATTERN = r"^.*[&,:;$^}{*=?@#|'<>.()%!].*$"
 
     class Meta:
         unique_together = [

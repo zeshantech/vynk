@@ -72,3 +72,9 @@ from .user import UserEndpoint
 from .invite import WorkspaceInvitationsViewset
 
 from .sticky import StickyViewSet
+
+from .time_entry import (
+    TimeEntryListCreateAPIEndpoint,
+    TimeEntryProjectsAPIEndpoint,
+    TimeEntryTasksAPIEndpoint,
+)

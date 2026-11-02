@@ -143,6 +143,12 @@ from .issue.comment import IssueCommentViewSet, CommentReactionViewSet
 from .issue.label import LabelViewSet, BulkCreateIssueLabelsEndpoint
 
 from .issue.link import IssueLinkViewSet
+from .issue.time_entry import (
+    IssueTimeEntryEndpoint,
+    TimeEntryProjectsEndpoint,
+    TimeEntryTasksEndpoint,
+    WorkspaceTimeEntriesEndpoint,
+)
 
 from .issue.relation import IssueRelationViewSet
 

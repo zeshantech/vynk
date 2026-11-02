@@ -82,6 +82,11 @@ export const coreRoutes: RouteConfigEntry[] = [
           route(":workspaceSlug/drafts", "./(all)/[workspaceSlug]/(projects)/drafts/page.tsx"),
         ]),
 
+        // Timesheet
+        layout("./(all)/[workspaceSlug]/(projects)/timesheet/layout.tsx", [
+          route(":workspaceSlug/timesheet", "./(all)/[workspaceSlug]/(projects)/timesheet/page.tsx"),
+        ]),
+
         // Notifications
         layout("./(all)/[workspaceSlug]/(projects)/notifications/layout.tsx", [
           route(":workspaceSlug/notifications", "./(all)/[workspaceSlug]/(projects)/notifications/page.tsx"),

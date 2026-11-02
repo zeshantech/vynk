@@ -1,0 +1,18 @@
+{
+  "name": "vynk-slack-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Slack bot for Vynk (Plane): log time, weekly hours, my tasks, create tasks and projects, reminders.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.4.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,75 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { parseCreateTask, parseLogTime } from "../src/commands.js";
+import { currentWeek, formatHours, hoursError, parseHours, resolveDate } from "../src/time.js";
+
+test("parseHours", () => {
+  assert.equal(parseHours("2h"), 2);
+  assert.equal(parseHours("1.5"), 1.5);
+  assert.equal(parseHours("1h30m"), 1.5);
+  assert.equal(parseHours("90m"), 1.5);
+  assert.equal(parseHours("abc"), null);
+  assert.equal(parseHours("0"), null);
+  assert.equal(parseHours(""), null);
+  assert.equal(parseHours("1h 30m"), 1.5);
+  assert.equal(parseHours("1:30"), 1.5);
+  assert.equal(parseHours("1,5"), 1.5);
+  assert.equal(parseHours("2 hours"), 2);
+  assert.equal(parseHours("1h90m"), null);
+  assert.equal(parseHours("1:75"), null);
+  assert.equal(parseHours("2h-1"), null);
+  assert.equal(parseHours("-2"), null);
+  assert.equal(parseHours("1e3"), null);
+  assert.equal(parseHours("25h"), 25);
+});
+
+test("hoursError", () => {
+  assert.equal(hoursError("8h"), null);
+  assert.equal(hoursError("24"), null);
+  assert.match(hoursError("24h1m"), /Maximum is 24h/);
+  assert.match(hoursError("25"), /Maximum is 24h/);
+  assert.match(hoursError("1500m"), /Maximum is 24h/);
+  assert.match(hoursError("2222h"), /Maximum is 24h/);
+  assert.match(hoursError("2222"), /Maximum is 24h/);
+  assert.match(hoursError("abc"), /Use a duration/);
+  assert.match(hoursError("0"), /Use a duration/);
+});
+
+test("formatHours", () => {
+  assert.equal(formatHours(1.5), "1h 30m");
+  assert.equal(formatHours(0.25), "15m");
+  assert.equal(formatHours(0), "0h");
+});
+
+test("parseLogTime", () => {
+  assert.deepEqual(parseLogTime("2h ABC-12 fixed login bug yesterday"), {
+    hours: 2,
+    taskKey: "ABC-12",
+    date: "yesterday",
+    comment: "fixed login bug",
+  });
+  assert.deepEqual(parseLogTime("#abc-45 1h30m review"), {
+    hours: 1.5,
+    taskKey: "ABC-45",
+    date: null,
+    comment: "review",
+  });
+  assert.deepEqual(parseLogTime("2 FYX-123"), { hours: 2, taskKey: "FYX-123", date: null, comment: "" });
+  assert.deepEqual(parseLogTime("FYX-123 2h"), { hours: 2, taskKey: "FYX-123", date: null, comment: "" });
+  assert.deepEqual(parseLogTime("2h fixed 3 bugs"), { hours: 2, taskKey: null, date: null, comment: "fixed 3 bugs" });
+  assert.deepEqual(parseLogTime("3h X-9 2026-10-15"), { hours: 3, taskKey: "X-9", date: "2026-10-15", comment: "" });
+  assert.deepEqual(parseLogTime(""), { hours: null, taskKey: null, date: null, comment: "" });
+});
+
+test("parseCreateTask", () => {
+  assert.deepEqual(parseCreateTask("website | Fix header"), { project: "website", subject: "Fix header" });
+  assert.deepEqual(parseCreateTask("Fix header"), { project: null, subject: "Fix header" });
+});
+
+test("dates", () => {
+  const w = currentWeek("UTC");
+  assert.equal(new Date(`${w.from}T00:00:00Z`).getUTCDay(), 1);
+  assert.equal(w.days.length, 7);
+  assert.equal(resolveDate("2026-01-02", "UTC"), "2026-01-02");
+  assert.equal(resolveDate("nope", "UTC"), null);
+});

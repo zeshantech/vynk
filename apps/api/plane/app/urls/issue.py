@@ -9,6 +9,10 @@ from plane.app.views import (
     BulkDeleteIssuesEndpoint,
     SubIssuesEndpoint,
     IssueLinkViewSet,
+    IssueTimeEntryEndpoint,
+    TimeEntryProjectsEndpoint,
+    TimeEntryTasksEndpoint,
+    WorkspaceTimeEntriesEndpoint,
     IssueAttachmentEndpoint,
     CommentReactionViewSet,
     IssueActivityEndpoint,
@@ -105,6 +109,31 @@ urlpatterns = [
         "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/sub-issues/",
         SubIssuesEndpoint.as_view(),
         name="sub-issues",
+    ),
+    path(
+        "workspaces/<str:slug>/time-entries/",
+        WorkspaceTimeEntriesEndpoint.as_view(),
+        name="workspace-time-entries",
+    ),
+    path(
+        "workspaces/<str:slug>/time-entries/projects/",
+        TimeEntryProjectsEndpoint.as_view(),
+        name="time-entry-projects",
+    ),
+    path(
+        "workspaces/<str:slug>/time-entries/tasks/",
+        TimeEntryTasksEndpoint.as_view(),
+        name="time-entry-tasks",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/time-entries/",
+        IssueTimeEntryEndpoint.as_view(),
+        name="issue-time-entries",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/time-entries/<uuid:pk>/",
+        IssueTimeEntryEndpoint.as_view(),
+        name="issue-time-entry",
     ),
     path(
         "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/issue-links/",
