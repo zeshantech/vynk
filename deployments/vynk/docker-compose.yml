@@ -1,5 +1,5 @@
 # Vynk production stack.
-# - Database: external (Supabase Postgres) via DATABASE_URL
+# - Database: external (Neon Postgres, "plane" schema) via DATABASE_URL
 # - File storage: AWS S3 (USE_MINIO=0)
 # - Redis + RabbitMQ run here in Docker
 # Secrets come from Infisical (written to .env by the deploy workflow). Never hardcode them here.
