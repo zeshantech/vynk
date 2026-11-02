@@ -79,6 +79,8 @@ package-lock.json
 
 # lock files
 package-lock.json
+# ...except the Slack bot's: its Dockerfile runs `npm ci`
+!integrations/slack-bot/package-lock.json
 
 
 

@@ -159,6 +159,23 @@ services:
     networks: [default, shared_net]
 
 
+  # Slack bot (Socket Mode: connects out to Slack, no inbound port, no Caddy route).
+  # Run only ONE copy per Slack app (a second copy, e.g. an old bot, steals half the commands).
+  slack-bot:
+    image: ${IMAGE_PREFIX}-slack-bot:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PLANE_URL: ${WEB_URL}
+      PLANE_WORKSPACE_SLUG: ${PLANE_WORKSPACE_SLUG:-}
+      PLANE_API_KEY: ${PLANE_API_KEY:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      BOT_TIMEZONE: ${BOT_TIMEZONE:-Asia/Karachi}
+      REMINDER_DAY: ${REMINDER_DAY:-}
+      REMINDER_TIME: ${REMINDER_TIME:-17:00}
+      REMINDER_MIN_HOURS: ${REMINDER_MIN_HOURS:-40}
+    depends_on: [api]
+
   plane-mq:
     image: rabbitmq:3.13.6-management-alpine
     restart: unless-stopped

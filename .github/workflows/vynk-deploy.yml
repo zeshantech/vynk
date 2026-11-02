@@ -36,6 +36,7 @@ jobs:
           - { name: live, context: ".", file: apps/live/Dockerfile.live }
           - { name: api, context: apps/api, file: apps/api/Dockerfile.api }
           - { name: proxy, context: apps/proxy, file: apps/proxy/Dockerfile.ce }
+          - { name: slack-bot, context: integrations/slack-bot, file: integrations/slack-bot/Dockerfile }
     steps:
       - uses: actions/checkout@v4
 
