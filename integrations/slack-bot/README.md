@@ -20,7 +20,7 @@ Slack users are matched to Vynk users by email. Time is logged as that person, a
 1. https://api.slack.com/apps → **Create New App → From a manifest** → paste `slack-manifest.yml` → Install to the workspace.
 2. Copy the **Bot User OAuth Token** (`xoxb-…`) and create an **App-Level Token** with `connections:write` (`xapp-…`).
 3. In Vynk as a **workspace admin**: avatar → **Profile settings → Personal access tokens → Add** (`PLANE_API_KEY`). The key lets the bot look up people and log time on their behalf, so keep it secret.
-4. Set: `PLANE_URL` (e.g. `https://vynk.robustcraft.dpdns.org`; it is also used to build the task links the bot posts), `PLANE_WORKSPACE_SLUG`, `PLANE_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`.
+4. Set: `PLANE_URL` (e.g. `https://vynk.robustcraft.com`; it is also used to build the task links the bot posts), `PLANE_WORKSPACE_SLUG`, `PLANE_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`.
 
 Optional: `BOT_TIMEZONE` (default `Asia/Karachi`); weekly DM reminder with `REMINDER_DAY=fri`, `REMINDER_TIME=17:00`, `REMINDER_MIN_HOURS=40`.
 

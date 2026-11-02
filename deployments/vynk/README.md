@@ -11,7 +11,7 @@ Everything runs on one domain, routed by the server's existing Caddy (see Caddyf
 - Add the contents of `Caddyfile.snippet` to that Caddy's Caddyfile and reload it.
 - **Do not run `bootstrap-server.sh` on this server**: it enables `ufw` with only 22/80/443 open and changes SSH login, which can break what is already running. Use an existing SSH user in the `docker` group (`root` works) and add the deploy SSH public key to its `authorized_keys`.
 - If Redis has a password, set `REDIS_URL` in Infisical, e.g. `redis://:PASSWORD@redis:6379/5`.
-- DNS: `A vynk.robustcraft.dpdns.org -> <server IP>`.
+- DNS: `A vynk.robustcraft.com -> <server IP>`.
 
 ## 2. Neon (database)
 
@@ -32,7 +32,7 @@ postgresql://<user>:<password>@<ep-xxxx>.<region>.aws.neon.tech/neondb?sslmode=r
 ```json
 [
   {
-    "AllowedOrigins": ["https://vynk.robustcraft.dpdns.org"],
+    "AllowedOrigins": ["https://vynk.robustcraft.com"],
     "AllowedMethods": ["GET", "POST", "PUT", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
@@ -56,7 +56,7 @@ Until `DEPLOY_ENABLED=true`, the workflow only builds and pushes images.
 
 ## 6. First login
 
-Open `https://vynk.robustcraft.dpdns.org/god-mode/`, create the admin, then enable Magic link under Authentication and send a test email.
+Open `https://vynk.robustcraft.com/god-mode/`, create the admin, then enable Magic link under Authentication and send a test email.
 
 ## Staying current with Plane
 
