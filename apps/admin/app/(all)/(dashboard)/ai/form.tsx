@@ -32,6 +32,7 @@ export function InstanceAIForm(props: IInstanceAIForm) {
     formState: { errors, isSubmitting },
   } = useForm<AIFormValues>({
     defaultValues: {
+      LLM_PROVIDER: config["LLM_PROVIDER"],
       LLM_API_KEY: config["LLM_API_KEY"],
       LLM_MODEL: config["LLM_MODEL"],
     },
@@ -39,20 +40,29 @@ export function InstanceAIForm(props: IInstanceAIForm) {
 
   const aiFormFields: TControllerInputFormField<AIFormValues>[] = [
     {
+      key: "LLM_PROVIDER",
+      type: "text",
+      label: "Provider",
+      description: "One of: openai, groq, anthropic, gemini.",
+      placeholder: "groq",
+      error: Boolean(errors.LLM_PROVIDER),
+      required: false,
+    },
+    {
       key: "LLM_MODEL",
       type: "text",
       label: "LLM Model",
       description: (
         <>
-          Choose an OpenAI engine.{" "}
+          A model id for the provider you chose, e.g. gpt-4o-mini (OpenAI) or openai/gpt-oss-20b (Groq).{" "}
           <a
-            href="https://platform.openai.com/docs/models/overview"
+            href="https://console.groq.com/docs/models"
             target="_blank"
             className="text-accent-primary hover:underline"
             rel="noreferrer"
-            aria-label="OpenAI models documentation"
+            aria-label="Groq models documentation"
           >
-            Learn more
+            Groq models
           </a>
         </>
       ),
@@ -66,7 +76,7 @@ export function InstanceAIForm(props: IInstanceAIForm) {
       label: "API key",
       description: (
         <>
-          You will find your API key{" "}
+          Your provider&apos;s API key (
           <a
             href="https://platform.openai.com/api-keys"
             target="_blank"
@@ -74,8 +84,19 @@ export function InstanceAIForm(props: IInstanceAIForm) {
             rel="noreferrer"
             aria-label="OpenAI API keys page"
           >
-            here.
+            OpenAI
           </a>
+          ,{" "}
+          <a
+            href="https://console.groq.com/keys"
+            target="_blank"
+            className="text-accent-primary hover:underline"
+            rel="noreferrer"
+            aria-label="Groq API keys page"
+          >
+            Groq
+          </a>
+          ).
         </>
       ),
       placeholder: "sk-asddassdfasdefqsdfasd23das3dasdcasd",
@@ -102,8 +123,10 @@ export function InstanceAIForm(props: IInstanceAIForm) {
     <div className="space-y-8">
       <div className="space-y-3">
         <div>
-          <div className="pb-1 text-18 font-medium text-primary">OpenAI</div>
-          <div className="text-13 font-regular text-tertiary">If you use ChatGPT, this is for you.</div>
+          <div className="pb-1 text-18 font-medium text-primary">AI provider</div>
+          <div className="text-13 font-regular text-tertiary">
+            Works with OpenAI, Groq, Anthropic and Gemini keys. Pick the provider, then add its model and API key.
+          </div>
         </div>
         <div className="grid-col grid w-full grid-cols-1 items-center justify-between gap-x-12 gap-y-8 lg:grid-cols-3">
           {aiFormFields.map((field) => (

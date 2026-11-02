@@ -20,11 +20,13 @@ Slack users are matched to Vynk users by email. Time is logged as that person, a
 1. https://api.slack.com/apps → **Create New App → From a manifest** → paste `slack-manifest.yml` → Install to the workspace.
 2. Copy the **Bot User OAuth Token** (`xoxb-…`) and create an **App-Level Token** with `connections:write` (`xapp-…`).
 3. In Vynk as a **workspace admin**: avatar → **Profile settings → Personal access tokens → Add** (`PLANE_API_KEY`). The key lets the bot look up people and log time on their behalf, so keep it secret.
-4. Set: `PLANE_URL` (e.g. `https://vynk.robustcraft.com`), `PLANE_WORKSPACE_SLUG`, `PLANE_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`.
+4. Set: `PLANE_URL` (e.g. `https://vynk.robustcraft.com`; it is also used to build the task links the bot posts), `PLANE_WORKSPACE_SLUG`, `PLANE_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`.
 
 Optional: `BOT_TIMEZONE` (default `Asia/Karachi`); weekly DM reminder with `REMINDER_DAY=fri`, `REMINDER_TIME=17:00`, `REMINDER_MIN_HOURS=40`.
 
 Run only **one** bot per Slack app. Socket Mode splits traffic between every connected copy, so a second copy (a local test, or the old OpenProject bot) would steal half of the commands. Use a separate Slack app for testing.
+
+Production: the bot ships as the `slack-bot` service in `deployments/vynk/docker-compose.yml` and is built/deployed by the same workflow. Put `PLANE_WORKSPACE_SLUG`, `PLANE_API_KEY`, `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in Infisical (the compose file sets `PLANE_URL` from `WEB_URL`); without them the container just restarts until they exist.
 
 Local run: `npm install && PLANE_URL=… PLANE_WORKSPACE_SLUG=… PLANE_API_KEY=… SLACK_BOT_TOKEN=… SLACK_APP_TOKEN=… npm start`. Tests: `npm test`.
 
