@@ -29,6 +29,10 @@ class LLMProvider:
     name: str = ""
     models: List[str] = []
     default_model: str = ""
+    # OpenAI-compatible endpoint to use instead of api.openai.com (None = OpenAI's own)
+    base_url: str | None = None
+    # Providers that rename models often accept any model id instead of a fixed list
+    allow_any_model: bool = False
 
     @classmethod
     def get_config(cls) -> Dict[str, str | List[str]]:
@@ -66,10 +70,21 @@ class GeminiProvider(LLMProvider):
     default_model = "gemini-pro"
 
 
+class GroqProvider(LLMProvider):
+    """Groq serves an OpenAI-compatible API, so the OpenAI client works against its base URL."""
+
+    name = "Groq"
+    models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    default_model = "llama-3.3-70b-versatile"
+    base_url = "https://api.groq.com/openai/v1"
+    allow_any_model = True
+
+
 SUPPORTED_PROVIDERS = {
     "openai": OpenAIProvider,
     "anthropic": AnthropicProvider,
     "gemini": GeminiProvider,
+    "groq": GroqProvider,
 }
 
 
@@ -109,7 +124,7 @@ def get_llm_config() -> Tuple[str | None, str | None, str | None]:
         model = provider.default_model
 
     # Validate model is supported by provider
-    if model not in provider.models:
+    if not provider.allow_any_model and model not in provider.models:
         log_exception(
             ValueError(
                 f"Model {model} not supported by {provider.name}. Supported models: {', '.join(provider.models)}"
@@ -128,7 +143,9 @@ def get_llm_response(task, prompt, api_key: str, model: str, provider: str) -> T
         if provider.lower() == "gemini":
             model = f"gemini/{model}"
 
-        client = OpenAI(api_key=api_key)
+        provider_cls = SUPPORTED_PROVIDERS.get(provider.lower())
+        base_url = provider_cls.base_url if provider_cls else None
+        client = OpenAI(api_key=api_key, base_url=base_url)
         chat_completion = client.chat.completions.create(
             model=model, messages=[{"role": "user", "content": final_text}]
         )
