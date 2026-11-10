@@ -68,6 +68,20 @@ export class TimeEntryService extends APIService {
       .catch(messageOf);
   }
 
+  /** Create a task (assigned to `assigneeId`) so time can be logged on it straight away. */
+  async createTask(
+    slug: string,
+    projectId: string,
+    data: { name: string; assigneeId?: string }
+  ): Promise<{ id: string; sequence_id: number; name: string }> {
+    return this.post(`/api/workspaces/${slug}/projects/${projectId}/issues/`, {
+      name: data.name,
+      ...(data.assigneeId ? { assignee_ids: [data.assigneeId] } : {}),
+    })
+      .then((r) => r.data)
+      .catch(messageOf);
+  }
+
   async projects(slug: string): Promise<TTimeProject[]> {
     return this.get(`/api/workspaces/${slug}/time-entries/projects/`)
       .then((r) => r.data)

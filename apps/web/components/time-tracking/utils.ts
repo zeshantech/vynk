@@ -40,6 +40,13 @@ export const addDays = (d: Date, days: number): Date => {
   return next;
 };
 
+/** Every day from `from` to `to` (inclusive, ISO days), capped at `max` days. */
+export const daysBetween = (from: string, to: string, max = 370): string[] => {
+  const out: string[] = [];
+  for (let d = fromIsoDay(from); toIsoDay(d) <= to && out.length < max; d = addDays(d, 1)) out.push(toIsoDay(d));
+  return out;
+};
+
 /** Monday-to-Sunday week, `offset` weeks away from the current one. */
 export const weekDays = (offset: number): string[] => {
   const today = new Date();

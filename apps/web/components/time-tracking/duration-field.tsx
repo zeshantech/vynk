@@ -40,13 +40,13 @@ export function DurationField({ value, onChange, onKeyDown, inputRef, className,
           onKeyDown={onKeyDown}
         />
       </InputGroup>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="grid grid-cols-6 gap-1">
         {QUICK_DURATIONS.map((q) => (
           <button
             key={q}
             type="button"
             className={cn(
-              "rounded-md border px-2 py-0.5 text-caption-md-medium transition-colors",
+              "rounded-md border py-0.5 text-center text-caption-md-medium transition-colors",
               value === q
                 ? "border-accent-strong bg-accent-subtle text-accent-primary"
                 : "border-subtle text-secondary hover:bg-layer-transparent-hover"
@@ -56,8 +56,8 @@ export function DurationField({ value, onChange, onKeyDown, inputRef, className,
             {q}
           </button>
         ))}
-        {readBack && <span className="ml-1 text-caption-md-regular text-tertiary">= {readBack}</span>}
       </div>
+      {readBack && <span className="text-caption-md-regular text-tertiary">= {readBack}</span>}
     </div>
   );
 }

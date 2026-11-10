@@ -13,6 +13,8 @@ import { timeEntryService } from "@/services/time-entry.service";
 
 type Props = {
   workspaceSlug: string;
+  /** Only this project's tasks (all your projects when empty). */
+  projectId?: string | null;
   value: TTimeTask | null;
   onChange: (task: TTimeTask) => void;
   className?: string;
@@ -22,13 +24,19 @@ type Props = {
  * Pick an open task you can log time on, with the theme's searchable dropdown.
  * Empty search shows your assigned tasks first; typing searches every project you're in (titles or keys).
  */
-export function TaskSelect({ workspaceSlug, value, onChange, className }: Props) {
+export function TaskSelect({ workspaceSlug, projectId, value, onChange, className }: Props) {
   const seen = useRef(new Map<string, TTimeTask>());
 
   const load = async ({ search }: { search?: string }) => {
     const q = (search ?? "").trim();
-    let list = await timeEntryService.tasks(workspaceSlug, { q, assigned: q ? undefined : "1" });
-    if (!q && !list.length) list = await timeEntryService.tasks(workspaceSlug, {});
+    const project_id = projectId ?? undefined;
+    // In a project: all its open tasks. Across projects with no search: yours first, then anything.
+    let list = await timeEntryService.tasks(workspaceSlug, {
+      q,
+      project_id,
+      assigned: q || project_id ? undefined : "1",
+    });
+    if (!q && !list.length && !project_id) list = await timeEntryService.tasks(workspaceSlug, {});
     for (const t of list) seen.current.set(t.id, t);
     return { results: list, next_page_results: false };
   };
@@ -44,7 +52,7 @@ export function TaskSelect({ workspaceSlug, value, onChange, className }: Props)
       }}
       getOptionValue={(t) => t.id}
       getOptionLabel={(t) => `${t.key} ${t.name}`}
-      getOptionDescription={(t) => t.project.name}
+      getOptionDescription={(t) => (projectId ? undefined : t.project.name)}
       renderOption={(t) => (
         <span className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 text-caption-sm-medium text-tertiary">{t.key}</span>
@@ -53,7 +61,9 @@ export function TaskSelect({ workspaceSlug, value, onChange, className }: Props)
       )}
       placeholder="Pick a task"
       searchPlaceholder="Search tasks or type a key like ABC-12"
-      emptyMessage={(q) => (q ? `No open task matches "${q}"` : "No open tasks")}
+      emptyMessage={(q) =>
+        q ? `No open task matches "${q}"` : projectId ? "No open tasks in this project" : "No open tasks"
+      }
       contentSizing="anchor"
     >
       <Select.Trigger<TTimeTask> variant="select-md" className={className} appendIcon={<ChevronDownOutline />}>

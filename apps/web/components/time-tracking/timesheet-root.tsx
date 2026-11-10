@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import useSWR, { mutate } from "swr";
@@ -13,6 +13,7 @@ import { Icon } from "@makeplane/propel/components/icon";
 import { IconButton } from "@makeplane/propel/components/icon-button";
 import { Tab, Tabs, TabsList, TabsPanel } from "@makeplane/propel/components/tabs";
 import {
+  CalendarOutline,
   ChevronDownOutline,
   ChevronLeftOutline,
   ChevronRightOutline,
@@ -20,6 +21,7 @@ import {
   DeleteOutline,
   DownloadOutline,
 } from "@makeplane/propel/icons";
+import { DateRangeSelect } from "@plane/blocks/property-select";
 import { Select } from "@plane/blocks/select";
 import { setToast } from "@plane/blocks/toast";
 import { EUserPermissionsLevel } from "@plane/constants";
@@ -29,13 +31,24 @@ import { cn } from "@plane/utils";
 import { ProjectSelect } from "@/components/dropdowns/project/project-select";
 // hooks
 import { useMember } from "@/hooks/store/use-member";
-import { useUser, useUserPermissions } from "@/hooks/store/user";
+import { useUser, useUserPermissions, useUserProfile } from "@/hooks/store/user";
 // services
 import type { TTimeEntry } from "@/services/time-entry.service";
 import { timeEntryService } from "@/services/time-entry.service";
 // local
 import { QuickLog } from "./quick-log";
-import { dayLabel, formatMinutes, fromIsoDay, groupEntries, rangeLabel, toIsoDay, weekDays } from "./utils";
+import {
+  dayLabel,
+  daysBetween,
+  formatMinutes,
+  fromIsoDay,
+  groupEntries,
+  rangeLabel,
+  toIsoDay,
+  weekDays,
+} from "./utils";
+
+const VISIBLE_DAYS = 7;
 
 const csvCell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
 const downloadCsv = (entries: TTimeEntry[], name: string) => {
@@ -60,43 +73,49 @@ const downloadCsv = (entries: TTimeEntry[], name: string) => {
 };
 
 const refreshAll = () => mutate((k) => Array.isArray(k) && (k[0] === "timesheet" || k[0] === "issue-time-entries"));
+const sumMinutes = (entries: TTimeEntry[] | undefined) => (entries ?? []).reduce((s, e) => s + e.minutes, 0);
 
-/** Timesheet: log time, see your week day by day; admins also get a Team tab. */
+type TRange = { from: string; to: string };
+const thisWeek = (): TRange => {
+  const w = weekDays(0);
+  return { from: w[0], to: w[6] };
+};
+
+/** Timesheet: log time, then look back over any date range; admins also get a Team tab. */
 export const TimesheetRoot = observer(function TimesheetRoot({ workspaceSlug }: { workspaceSlug: string }) {
-  const [offset, setOffset] = useState(0);
+  const [range, setRange] = useState<TRange>(thisWeek);
+  const { data: profile } = useUserProfile();
   const { allowPermissions } = useUserPermissions();
   const isAdmin = allowPermissions([EUserWorkspaceRoles.ADMIN] as any, EUserPermissionsLevel.WORKSPACE);
-  const days = useMemo(() => weekDays(offset), [offset]);
+  const days = useMemo(() => daysBetween(range.from, range.to), [range]);
+  const isThisWeek = range.from === thisWeek().from && range.to === thisWeek().to;
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col gap-5 overflow-y-auto px-4 py-6 md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-h4-semibold text-primary">Timesheet</h1>
-          <p className="text-body-sm-regular text-tertiary">Log your hours and see where the week went.</p>
+          <p className="text-body-sm-regular text-tertiary">Log your hours and see where the time went.</p>
         </div>
-        <div className="flex items-center gap-1">
-          <IconButton
-            variant="ghost"
-            size="md"
-            aria-label="Previous week"
-            icon={<Icon icon={ChevronLeftOutline} />}
-            onClick={() => setOffset(offset - 1)}
-          />
-          <Button
-            variant={offset === 0 ? "secondary" : "tertiary"}
-            size="md"
-            stretch="auto"
-            label={offset === 0 ? `This week · ${rangeLabel(days)}` : rangeLabel(days)}
-            onClick={() => setOffset(0)}
-          />
-          <IconButton
-            variant="ghost"
-            size="md"
-            aria-label="Next week"
-            icon={<Icon icon={ChevronRightOutline} />}
-            disabled={offset >= 0}
-            onClick={() => setOffset(offset + 1)}
+        <div className="flex items-center gap-2">
+          {!isThisWeek && (
+            <Button
+              variant="tertiary"
+              size="md"
+              stretch="auto"
+              label="This week"
+              onClick={() => setRange(thisWeek())}
+            />
+          )}
+          <DateRangeSelect
+            variant="select-md"
+            value={{ from: fromIsoDay(range.from), to: fromIsoDay(range.to) }}
+            onChange={(r) => {
+              if (r.from && r.to) setRange({ from: toIsoDay(r.from), to: toIsoDay(r.to) });
+            }}
+            icon={<CalendarOutline />}
+            weekStartsOn={profile?.start_of_the_week}
+            placeholder="Pick dates"
           />
         </div>
       </div>
@@ -110,29 +129,69 @@ export const TimesheetRoot = observer(function TimesheetRoot({ workspaceSlug }: 
             <Tab value="team" label="Team" />
           </TabsList>
           <TabsPanel value="mine">
-            <MyWeek workspaceSlug={workspaceSlug} days={days} />
+            <MyTime workspaceSlug={workspaceSlug} range={range} days={days} />
           </TabsPanel>
           <TabsPanel value="team">
-            <TeamWeek workspaceSlug={workspaceSlug} days={days} />
+            <TeamTime workspaceSlug={workspaceSlug} range={range} days={days} />
           </TabsPanel>
         </Tabs>
       ) : (
-        <MyWeek workspaceSlug={workspaceSlug} days={days} />
+        <MyTime workspaceSlug={workspaceSlug} range={range} days={days} />
       )}
     </div>
   );
 });
 
-/** Your week: one tile per day, then your entries grouped by day (newest first), each removable. */
-const MyWeek = observer(function MyWeek({ workspaceSlug, days }: { workspaceSlug: string; days: string[] }) {
+function RangeTotal({
+  label,
+  minutes,
+  range,
+  extra,
+}: {
+  label: string;
+  minutes: number;
+  range: TRange;
+  extra?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <span className="text-h4-semibold text-primary">{formatMinutes(minutes)}</span>
+      <span className="text-body-sm-regular text-tertiary">
+        {label} · {rangeLabel([range.from, range.to])}
+        {extra ? ` · ${extra}` : ""}
+      </span>
+    </div>
+  );
+}
+
+/** Your time in the range: day cards (click one to see that day, ‹ › for more days) and your entries. */
+const MyTime = observer(function MyTime({
+  workspaceSlug,
+  range,
+  days,
+}: {
+  workspaceSlug: string;
+  range: TRange;
+  days: string[];
+}) {
   const { data: me } = useUser();
   const today = toIsoDay(new Date());
+  const [selected, setSelected] = useState<string | null>(null);
+  const [start, setStart] = useState(0);
+
+  // New range: show the window holding today (or the start), and forget the picked day.
+  useEffect(() => {
+    const i = days.indexOf(today);
+    setStart(i >= 0 ? Math.max(0, Math.min(i - (i % VISIBLE_DAYS), days.length - VISIBLE_DAYS)) : 0);
+    setSelected(null);
+  }, [days, today]);
+
   const {
     data: entries,
     isLoading,
     error,
-  } = useSWR(me?.id ? ["timesheet", workspaceSlug, days[0], me.id, "", "mine"] : null, () =>
-    timeEntryService.between(workspaceSlug, { from: days[0], to: days[6], user_id: me?.id })
+  } = useSWR(me?.id ? ["timesheet", workspaceSlug, range.from, range.to, me.id, "mine"] : null, () =>
+    timeEntryService.between(workspaceSlug, { from: range.from, to: range.to, user_id: me?.id })
   );
 
   const byDay = useMemo(() => {
@@ -140,8 +199,11 @@ const MyWeek = observer(function MyWeek({ workspaceSlug, days }: { workspaceSlug
     for (const e of entries ?? []) map.set(e.spent_on, [...(map.get(e.spent_on) ?? []), e]);
     return map;
   }, [entries]);
-  const total = (entries ?? []).reduce((s, e) => s + e.minutes, 0);
-  const dayTotal = (d: string) => (byDay.get(d) ?? []).reduce((s, e) => s + e.minutes, 0);
+  const visible = days.slice(start, start + VISIBLE_DAYS);
+  // newest day first
+  const shownDays = (selected ? [selected] : days)
+    .filter((d) => byDay.get(d)?.length)
+    .map((d, i, all) => all[all.length - 1 - i]);
 
   const remove = async (e: TTimeEntry) => {
     try {
@@ -154,95 +216,149 @@ const MyWeek = observer(function MyWeek({ workspaceSlug, days }: { workspaceSlug
 
   return (
     <div className="flex flex-col gap-4 pt-4">
-      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-        {days.map((d) => {
-          const l = dayLabel(d);
-          const m = dayTotal(d);
-          return (
-            <div
-              key={d}
-              className={cn(
-                "flex flex-col rounded-lg border px-3 py-2",
-                d === today ? "border-accent-strong bg-accent-subtle" : "border-subtle bg-layer-1"
-              )}
-            >
-              <span className={cn("text-caption-md-medium", d === today ? "text-accent-primary" : "text-tertiary")}>
-                {l.weekday} {fromIsoDay(d).getDate()}
-              </span>
-              <span className={cn("text-body-md-semibold", m ? "text-primary" : "text-placeholder")}>
-                {m ? formatMinutes(m) : "–"}
-              </span>
-            </div>
-          );
-        })}
-        <div className="flex flex-col rounded-lg border border-subtle bg-layer-2 px-3 py-2">
-          <span className="text-caption-md-medium text-tertiary">Total</span>
-          <span className="text-body-md-semibold text-primary">{formatMinutes(total)}</span>
+      <RangeTotal
+        label="your time"
+        minutes={sumMinutes(entries)}
+        range={range}
+        extra={
+          selected
+            ? `${formatMinutes(sumMinutes(byDay.get(selected)))} on ${dayLabel(selected).weekday} ${fromIsoDay(selected).getDate()}`
+            : undefined
+        }
+      />
+
+      <div className="flex items-center gap-2">
+        <IconButton
+          variant="ghost"
+          size="md"
+          aria-label="Earlier days"
+          icon={<Icon icon={ChevronLeftOutline} />}
+          disabled={start === 0}
+          onClick={() => setStart(Math.max(0, start - VISIBLE_DAYS))}
+        />
+        <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-7">
+          {visible.map((d) => {
+            const l = dayLabel(d);
+            const m = sumMinutes(byDay.get(d));
+            const isSelected = selected === d;
+            return (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => setSelected(isSelected ? null : d)}
+                className={cn(
+                  "flex flex-col rounded-lg border px-3 py-2 text-left transition-colors",
+                  isSelected
+                    ? "border-accent-strong bg-accent-subtle"
+                    : d === today
+                      ? "border-accent-strong bg-layer-1 hover:bg-layer-transparent-hover"
+                      : "border-subtle bg-layer-1 hover:bg-layer-transparent-hover"
+                )}
+              >
+                <span
+                  className={cn(
+                    "text-caption-md-medium",
+                    isSelected || d === today ? "text-accent-primary" : "text-tertiary"
+                  )}
+                >
+                  {l.weekday} {fromIsoDay(d).getDate()}
+                  {d.slice(5, 7) !== days[0].slice(5, 7) || fromIsoDay(d).getDate() === 1
+                    ? ` ${fromIsoDay(d).toLocaleDateString(undefined, { month: "short" })}`
+                    : ""}
+                </span>
+                <span className={cn("text-body-md-semibold", m ? "text-primary" : "text-placeholder")}>
+                  {m ? formatMinutes(m) : "–"}
+                </span>
+              </button>
+            );
+          })}
         </div>
+        <IconButton
+          variant="ghost"
+          size="md"
+          aria-label="Later days"
+          icon={<Icon icon={ChevronRightOutline} />}
+          disabled={start + VISIBLE_DAYS >= days.length}
+          onClick={() => setStart(Math.max(0, Math.min(days.length - VISIBLE_DAYS, start + VISIBLE_DAYS)))}
+        />
       </div>
 
-      {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
-      {!error && !isLoading && !entries?.length && (
-        <div className="rounded-lg border border-dashed border-subtle px-4 py-10 text-center text-body-sm-regular text-tertiary">
-          Nothing logged this week yet. Pick a task above, set the time and press Log.
+      {selected && (
+        <div className="flex items-center gap-2 text-body-sm-regular text-secondary">
+          Showing {dayLabel(selected).weekday}, {dayLabel(selected).date}
+          <Button variant="tertiary" size="sm" stretch="auto" label="Show all days" onClick={() => setSelected(null)} />
         </div>
       )}
 
-      {days
-        .map((_, i) => days[days.length - 1 - i])
-        .map((d) => {
-          const list = byDay.get(d);
-          if (!list?.length) return null;
-          const l = dayLabel(d);
-          return (
-            <section key={d} className="overflow-hidden rounded-lg border border-subtle">
-              <div className="flex items-center justify-between bg-layer-1 px-4 py-2">
-                <span className="text-body-sm-medium text-primary">
-                  {l.weekday}, {l.date}
-                  {d === today && <span className="ml-2 text-caption-md-medium text-accent-primary">Today</span>}
-                </span>
-                <span className="text-body-sm-medium text-primary">{formatMinutes(dayTotal(d))}</span>
-              </div>
-              <ul className="divide-y divide-subtle">
-                {list.map((e) => (
-                  <li key={e.id} className="group flex items-center gap-3 px-4 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/${workspaceSlug}/browse/${e.issue.key}/`}
-                        className="flex min-w-0 items-center gap-2 text-body-sm-regular text-primary hover:underline"
-                      >
-                        <span className="shrink-0 text-caption-md-medium text-tertiary">{e.issue.key}</span>
-                        <span className="truncate">{e.issue.name}</span>
-                      </Link>
-                      <p className="truncate text-caption-md-regular text-tertiary">
-                        {e.project.name}
-                        {e.comment ? ` · ${e.comment}` : ""}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
-                    <span className="opacity-60 group-hover:opacity-100">
-                      <IconButton
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Remove entry"
-                        icon={<Icon icon={DeleteOutline} />}
-                        onClick={() => void remove(e)}
-                      />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
+      {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
+      {!error && !isLoading && !shownDays.length && (
+        <div className="rounded-lg border border-dashed border-subtle px-4 py-10 text-center text-body-sm-regular text-tertiary">
+          {selected ? "Nothing logged on this day." : "Nothing logged in these dates yet."} Use the form above to log
+          time.
+        </div>
+      )}
+
+      {shownDays.map((d) => {
+        const list = byDay.get(d) ?? [];
+        const l = dayLabel(d);
+        return (
+          <section key={d} className="overflow-hidden rounded-lg border border-subtle">
+            <div className="flex items-center justify-between bg-layer-1 px-4 py-2">
+              <span className="text-body-sm-medium text-primary">
+                {l.weekday}, {l.date}
+                {d === today && <span className="ml-2 text-caption-md-medium text-accent-primary">Today</span>}
+              </span>
+              <span className="text-body-sm-medium text-primary">{formatMinutes(sumMinutes(list))}</span>
+            </div>
+            <ul className="divide-y divide-subtle">
+              {list.map((e) => (
+                <li key={e.id} className="group flex items-start gap-3 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/${workspaceSlug}/browse/${e.issue.key}/`}
+                      className="flex min-w-0 items-center gap-2 text-body-sm-regular text-primary hover:underline"
+                    >
+                      <span className="shrink-0 text-caption-md-medium text-tertiary">{e.issue.key}</span>
+                      <span className="truncate">{e.issue.name}</span>
+                    </Link>
+                    <p className="text-caption-md-regular text-tertiary">{e.project.name}</p>
+                    {e.comment && (
+                      <p className="mt-1 text-body-sm-regular whitespace-pre-line text-secondary">{e.comment}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
+                  <span className="opacity-60 group-hover:opacity-100">
+                    <IconButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Remove entry"
+                      icon={<Icon icon={DeleteOutline} />}
+                      onClick={() => void remove(e)}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 });
 
 type TPerson = { id: string; name: string };
 
-/** Everyone's week (admins): people by day, click a person for their tasks; filter by person or project. */
-const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspaceSlug: string; days: string[] }) {
+/** Everyone's time in the range (admins): a person-by-day table; click a person for their tasks. */
+const TeamTime = observer(function TeamTime({
+  workspaceSlug,
+  range,
+  days,
+}: {
+  workspaceSlug: string;
+  range: TRange;
+  days: string[];
+}) {
   const [person, setPerson] = useState<TPerson | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -253,10 +369,10 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
     data: entries,
     isLoading,
     error,
-  } = useSWR(["timesheet", workspaceSlug, days[0], person?.id ?? "", projectId ?? "", "team"], () =>
+  } = useSWR(["timesheet", workspaceSlug, range.from, range.to, person?.id ?? "", projectId ?? "", "team"], () =>
     timeEntryService.between(workspaceSlug, {
-      from: days[0],
-      to: days[6],
+      from: range.from,
+      to: range.to,
       user_id: person?.id,
       project_id: projectId ?? undefined,
     })
@@ -267,7 +383,6 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
     for (const e of entries ?? []) totals[e.spent_on] = (totals[e.spent_on] ?? 0) + e.minutes;
     return totals;
   }, [entries]);
-  const grandTotal = (entries ?? []).reduce((s, e) => s + e.minutes, 0);
 
   const people: TPerson[] = (workspaceMembers.getWorkspaceMemberIds(workspaceSlug) ?? [])
     .map((id) => ({ id, name: getUserDetails(id)?.display_name ?? "" }))
@@ -285,6 +400,13 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
 
   return (
     <div className="flex flex-col gap-4 pt-4">
+      <RangeTotal
+        label="team time"
+        minutes={sumMinutes(entries)}
+        range={range}
+        extra={`${groups.length} ${groups.length === 1 ? "person" : "people"}`}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
         <Select<TPerson>
           getValues={() => people}
@@ -336,7 +458,7 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
             label="Export CSV"
             icon={<Icon icon={DownloadOutline} />}
             disabled={!entries?.length}
-            onClick={() => entries && downloadCsv(entries, `timesheet-${days[0]}.csv`)}
+            onClick={() => entries && downloadCsv(entries, `timesheet-${range.from}-to-${range.to}.csv`)}
           />
         </div>
       </div>
@@ -344,34 +466,33 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
       {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
 
       <div className="overflow-x-auto rounded-lg border border-subtle">
-        <table className="w-full min-w-[760px] border-collapse text-body-sm-regular">
+        <table className="w-full border-collapse text-body-sm-regular">
           <thead>
             <tr className="bg-layer-1 text-left">
-              <th className="px-4 py-2.5 text-caption-md-medium text-tertiary">
+              <th className="sticky left-0 z-10 min-w-56 bg-layer-1 px-4 py-2.5 text-caption-md-medium text-tertiary">
                 Person {isLoading && <span className="ml-1">· loading…</span>}
               </th>
-              {days.map((d) => {
-                const l = dayLabel(d);
-                return (
-                  <th
-                    key={d}
-                    className={cn(
-                      "w-20 px-2 py-2.5 text-center text-caption-md-medium",
-                      d === today ? "text-accent-primary" : "text-tertiary"
-                    )}
-                  >
-                    {l.weekday} {fromIsoDay(d).getDate()}
-                  </th>
-                );
-              })}
-              <th className="w-20 px-4 py-2.5 text-right text-caption-md-medium text-tertiary">Total</th>
+              {days.map((d) => (
+                <th
+                  key={d}
+                  className={cn(
+                    "min-w-16 px-2 py-2.5 text-center text-caption-md-medium whitespace-nowrap",
+                    d === today ? "text-accent-primary" : "text-tertiary"
+                  )}
+                >
+                  {dayLabel(d).weekday} {fromIsoDay(d).getDate()}
+                </th>
+              ))}
+              <th className="sticky right-0 z-10 min-w-20 bg-layer-1 px-4 py-2.5 text-right text-caption-md-medium text-tertiary">
+                Total
+              </th>
             </tr>
           </thead>
           <tbody>
             {!isLoading && !groups.length && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-tertiary">
-                  Nobody has logged time for this week{projectId || person ? " with these filters" : ""}.
+                <td colSpan={days.length + 2} className="px-4 py-10 text-center text-tertiary">
+                  Nobody has logged time in these dates{projectId || person ? " with these filters" : ""}.
                 </td>
               </tr>
             )}
@@ -389,13 +510,15 @@ const TeamWeek = observer(function TeamWeek({ workspaceSlug, days }: { workspace
           {groups.length > 1 && (
             <tfoot>
               <tr className="border-t border-subtle bg-layer-1 text-body-sm-medium text-primary">
-                <td className="px-4 py-2.5">Total</td>
+                <td className="sticky left-0 bg-layer-1 px-4 py-2.5">Total</td>
                 {days.map((d) => (
                   <td key={d} className="px-2 py-2.5 text-center">
                     {dayTotals[d] ? formatMinutes(dayTotals[d]) : "–"}
                   </td>
                 ))}
-                <td className="px-4 py-2.5 text-right">{formatMinutes(grandTotal)}</td>
+                <td className="sticky right-0 bg-layer-1 px-4 py-2.5 text-right">
+                  {formatMinutes(sumMinutes(entries))}
+                </td>
               </tr>
             </tfoot>
           )}
@@ -421,7 +544,7 @@ function PersonRows({
   return (
     <>
       <tr className="cursor-pointer border-t border-subtle hover:bg-layer-transparent-hover" onClick={onToggle}>
-        <td className="px-4 py-2.5">
+        <td className="sticky left-0 bg-surface-1 px-4 py-2.5">
           <span className="flex items-center gap-2 text-body-sm-medium text-primary">
             <ChevronRightOutline
               className={cn("size-3.5 shrink-0 text-tertiary transition-transform", open && "rotate-90")}
@@ -434,12 +557,14 @@ function PersonRows({
             {group.perDay[d] ? formatMinutes(group.perDay[d]) : <span className="text-placeholder">–</span>}
           </td>
         ))}
-        <td className="px-4 py-2.5 text-right text-body-sm-medium text-primary">{formatMinutes(group.total)}</td>
+        <td className="sticky right-0 bg-surface-1 px-4 py-2.5 text-right text-body-sm-medium text-primary">
+          {formatMinutes(group.total)}
+        </td>
       </tr>
       {open &&
         group.rows.map((r) => (
           <tr key={r.key} className="border-t border-subtle bg-layer-1">
-            <td className="max-w-0 py-2 pr-4 pl-10">
+            <td className="sticky left-0 max-w-72 bg-layer-1 py-2 pr-4 pl-10">
               <Link href={r.href} className="block truncate text-primary hover:underline">
                 {r.label}
               </Link>
@@ -450,7 +575,7 @@ function PersonRows({
                 {r.perDay[d] ? formatMinutes(r.perDay[d]) : ""}
               </td>
             ))}
-            <td className="px-4 py-2 text-right text-secondary">{formatMinutes(r.total)}</td>
+            <td className="sticky right-0 bg-layer-1 px-4 py-2 text-right text-secondary">{formatMinutes(r.total)}</td>
           </tr>
         ))}
     </>
