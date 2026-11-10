@@ -25,6 +25,7 @@ import type { TPeekModes } from "./header";
 import { IssuePeekOverviewHeader } from "./header";
 import { PeekOverviewIssueDetails } from "./issue-detail";
 import { IssuePeekOverviewLoader } from "./loader";
+import { IssueTimeLog } from "@/components/time-tracking/issue-time-log";
 import { PeekOverviewProperties } from "./properties";
 
 interface IIssueView {
@@ -197,6 +198,13 @@ export const IssueView = observer(function IssueView(props: IIssueView) {
                       />
                     </div>
 
+                    <IssueTimeLog
+                      workspaceSlug={workspaceSlug}
+                      projectId={projectId}
+                      issueId={issueId}
+                      disabled={is_archived}
+                    />
+
                     <PeekOverviewProperties
                       workspaceSlug={workspaceSlug}
                       projectId={projectId}
@@ -237,6 +245,13 @@ export const IssueView = observer(function IssueView(props: IIssueView) {
                             issueServiceType={EIssueServiceType.ISSUES}
                           />
                         </div>
+
+                        <IssueTimeLog
+                          workspaceSlug={workspaceSlug}
+                          projectId={projectId}
+                          issueId={issueId}
+                          disabled={is_archived}
+                        />
 
                         <IssueActivity
                           workspaceSlug={workspaceSlug}
