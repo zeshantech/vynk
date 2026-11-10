@@ -515,6 +515,24 @@ app.event("app_mention", async ({ event, client, logger }) => {
   }
 });
 
+// Slack doesn't send app_mention in the app's own DM, so answer plain messages there with the menu.
+app.message(async ({ message, client, logger }) => {
+  if (message.channel_type !== "im" || message.subtype || message.bot_id || !message.user) return;
+  try {
+    const user = await vynkUser(client, message.user);
+    await client.chat.postEphemeral({
+      channel: message.channel,
+      user: message.user,
+      ...menuView(MENU, user.admin ? ADMIN_MENU : [], user.name),
+    });
+  } catch (err) {
+    logger.error("dm failed", err);
+    await client.chat
+      .postEphemeral({ channel: message.channel, user: message.user, text: errorText(err) })
+      .catch(() => null);
+  }
+});
+
 app.action(/^menu_.+$/, async ({ ack, body, action, client, respond, logger }) => {
   await ack();
   const cmd = { user_id: body.user.id };
