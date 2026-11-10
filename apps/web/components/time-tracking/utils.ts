@@ -106,3 +106,40 @@ export const groupEntries = (entries: TTimeEntry[], workspaceSlug: string): TShe
   for (const g of groups.values()) g.rows.sort((a, b) => b.total - a.total);
   return [...groups.values()].toSorted((a, b) => b.total - a.total);
 };
+
+export type TProjectTotal = {
+  id: string;
+  name: string;
+  total: number;
+  tasks: { id: string; key: string; name: string; href: string; total: number }[];
+};
+
+/** Projects (sorted by time) -> their tasks, with totals in minutes. */
+export const groupByProject = (entries: TTimeEntry[], workspaceSlug: string): TProjectTotal[] => {
+  const projects = new Map<string, TProjectTotal>();
+  for (const e of entries) {
+    let project = projects.get(e.project.id);
+    if (!project) {
+      project = { id: e.project.id, name: e.project.name, total: 0, tasks: [] };
+      projects.set(e.project.id, project);
+    }
+    let task = project.tasks.find((t) => t.id === e.issue.id);
+    if (!task) {
+      task = {
+        id: e.issue.id,
+        key: e.issue.key,
+        name: e.issue.name,
+        href: `/${workspaceSlug}/browse/${e.issue.key}/`,
+        total: 0,
+      };
+      project.tasks.push(task);
+    }
+    task.total += e.minutes;
+    project.total += e.minutes;
+  }
+  const list = [...projects.values()];
+  // oxlint-disable-next-line unicorn/no-array-sort -- sorting fresh local arrays; toSorted isn't in this TS lib target
+  for (const p of list) p.tasks.sort((a, b) => b.total - a.total);
+  // oxlint-disable-next-line unicorn/no-array-sort -- same
+  return list.sort((a, b) => b.total - a.total);
+};

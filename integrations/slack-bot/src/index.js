@@ -1,7 +1,8 @@
 import bolt from "@slack/bolt";
 import { Plane, PlaneError, SlackLinks } from "./plane.js";
 import { parseCreateTask, parseLogTime } from "./commands.js";
-import { currentWeek, formatHours, hoursError, parseHours, resolveDate, todayIn } from "./time.js";
+import { readLogTimeForm, stateOf } from "./forms.js";
+import { currentWeek, formatHours, hoursError, resolveDate, todayIn } from "./time.js";
 import { connectView, escape, loggedView, menuView, tasksView, teamView, weekView } from "./views.js";
 
 const { App, LogLevel } = bolt;
@@ -153,33 +154,54 @@ async function logEntries(user, entries) {
     : view;
 }
 
+const projectOption = (p) => ({ text: plain(p.name.slice(0, 75)), value: `${p.id}|${p.identifier}` });
 const taskOption = (t) => ({
   text: plain(`${t.key} · ${t.name}`.slice(0, 75)),
-  value: `${t.id}|${t.key}|${t.project.name.slice(0, 60)}`,
+  value: `${t.id}|${t.key}|${t.project.id}`,
 });
 
-const stateOf = (values = {}) => {
-  const out = {};
-  for (const [block, actions] of Object.entries(values)) {
-    const a = Object.values(actions)[0] ?? {};
-    out[block] = { text: a.value, date: a.selected_date, option: a.selected_option };
-  }
-  return out;
-};
-
-function entryBlocks(n, prev, today) {
+function entryBlocks(n, prev, today, projects) {
   const p = (k) => prev[`e${n}_${k}`] ?? {};
   return [
     {
       type: "input",
+      block_id: `e${n}_project`,
+      label: plain("Project"),
+      element: {
+        type: "static_select",
+        action_id: "project",
+        placeholder: plain("Choose a project"),
+        options: projects.slice(0, 100).map(projectOption),
+        ...(p("project").option ? { initial_option: p("project").option } : {}),
+      },
+    },
+    {
+      type: "input",
+      optional: true,
       block_id: `e${n}_task`,
       label: plain("Task"),
       element: {
         type: "external_select",
         action_id: "lt_task",
         min_query_length: 0,
-        placeholder: plain("Search any task, or type a key like ABC-12"),
+        placeholder: plain("Search the project's tasks, or type a key like ABC-12"),
         ...(p("task").option ? { initial_option: p("task").option } : {}),
+      },
+    },
+    {
+      type: "input",
+      optional: true,
+      block_id: `e${n}_newtask`,
+      label: plain("…or create a new task"),
+      hint: plain(
+        "Leave Task empty and type a title: the task is created in the project, assigned to you, and the time is logged on it."
+      ),
+      element: {
+        type: "plain_text_input",
+        action_id: "newtask",
+        max_length: 255,
+        placeholder: plain("New task title"),
+        ...(p("newtask").text ? { initial_value: p("newtask").text } : {}),
       },
     },
     {
@@ -213,13 +235,13 @@ function entryBlocks(n, prev, today) {
   ];
 }
 
-function logTimeModal(count, prev = {}) {
+function logTimeModal(count, prev, projects) {
   const today = todayIn(TZ);
   const blocks = [];
   for (let n = 1; n <= count; n++) {
     if (n > 1) blocks.push({ type: "divider" });
     if (count > 1) blocks.push({ type: "section", text: { type: "mrkdwn", text: `*Entry ${n}*` } });
-    blocks.push(...entryBlocks(n, prev, today));
+    blocks.push(...entryBlocks(n, prev, today, projects));
   }
   const buttons = [];
   if (count < MAX_ENTRIES)
@@ -237,22 +259,64 @@ function logTimeModal(count, prev = {}) {
   };
 }
 
-async function openLogTimeModal(client, triggerId, prefill = {}) {
-  const prev = {
-    ...(prefill.hours ? { e1_hours: { text: String(prefill.hours) } } : {}),
-    ...(prefill.comment ? { e1_notes: { text: prefill.comment } } : {}),
-    ...(prefill.task ? { e1_task: { option: taskOption(prefill.task) } } : {}),
-  };
-  await client.views.open({ trigger_id: triggerId, view: logTimeModal(1, prev) });
+const loadingModal = (title) => ({
+  type: "modal",
+  title: plain(title),
+  close: plain("Cancel"),
+  blocks: [{ type: "section", text: { type: "mrkdwn", text: "Loading your projects…" } }],
+});
+const messageModal = (title, text) => ({
+  type: "modal",
+  title: plain(title),
+  close: plain("Close"),
+  blocks: [{ type: "section", text: { type: "mrkdwn", text } }],
+});
+
+/**
+ * Opens straight away (Slack's trigger expires in 3s), then fills in the person's projects.
+ * prefill: { hours, comment, taskKey }
+ */
+async function openLogTimeModal(client, triggerId, slackUserId, prefill = {}) {
+  const { view } = await client.views.open({ trigger_id: triggerId, view: loadingModal("Log time") });
+  let next;
+  try {
+    const user = await vynkUser(client, slackUserId);
+    const [projects, task] = await Promise.all([
+      user.plane.projectsFor(user.id),
+      prefill.taskKey ? user.plane.taskByKey(user.id, prefill.taskKey) : null,
+    ]);
+    if (!projects.length) {
+      next = messageModal("Log time", "You're not a member of any project yet. Ask an admin to add you to one.");
+    } else {
+      const project = task && projects.find((p) => p.id === task.project.id);
+      next = logTimeModal(
+        1,
+        {
+          ...(prefill.hours ? { e1_hours: { text: String(prefill.hours) } } : {}),
+          ...(prefill.comment ? { e1_notes: { text: prefill.comment } } : {}),
+          ...(project ? { e1_project: { option: projectOption(project) } } : {}),
+          ...(task ? { e1_task: { option: taskOption(task) } } : {}),
+        },
+        projects
+      );
+    }
+  } catch (err) {
+    next = messageModal("Log time", errorReply(err).text);
+    if (err instanceof NotConnectedError) next.blocks = connectView(err.url).blocks;
+  }
+  await client.views.update({ view_id: view.id, hash: view.hash, view: next });
 }
 
-// live task search: your assigned tasks first, anything you can log on as you type
+// Task search for one entry: the tasks of the project picked in that entry (all your tasks if none yet).
 app.options("lt_task", async ({ ack, body, client, logger }) => {
   try {
     const user = await vynkUser(client, body.user.id);
+    const entry = /^e(\d+)_/.exec(body.block_id ?? "")?.[1] ?? "1";
+    const picked = body.view?.state?.values?.[`e${entry}_project`]?.project?.selected_option?.value;
+    const projectId = picked?.split("|")[0];
     const q = (body.value ?? "").trim();
-    let tasks = await user.plane.tasksFor(user.id, { q, assigned: !q, limit: 100 });
-    if (!q && !tasks.length) tasks = await user.plane.tasksFor(user.id, { limit: 100 });
+    let tasks = await user.plane.tasksFor(user.id, { q, projectId, assigned: !q && !projectId, limit: 100 });
+    if (!q && !projectId && !tasks.length) tasks = await user.plane.tasksFor(user.id, { limit: 100 });
     await ack({ options: tasks.slice(0, 100).map(taskOption) });
   } catch (err) {
     logger.error("task search failed", err);
@@ -264,7 +328,12 @@ async function refreshLogTime({ body, client, logger }, delta) {
   try {
     const count = JSON.parse(body.view.private_metadata || "{}").count ?? 1;
     const next = Math.min(Math.max(count + delta, 1), MAX_ENTRIES);
-    await client.views.update({ view_id: body.view.id, view: logTimeModal(next, stateOf(body.view.state?.values)) });
+    const user = await vynkUser(client, body.user.id);
+    const projects = await user.plane.projectsFor(user.id);
+    await client.views.update({
+      view_id: body.view.id,
+      view: logTimeModal(next, stateOf(body.view.state?.values), projects),
+    });
   } catch (err) {
     logger.error("log time refresh failed", err);
   }
@@ -279,30 +348,26 @@ app.action("lt_remove", async (args) => {
 });
 
 app.view("log_time", async ({ ack, body, view, client, logger }) => {
-  const prev = stateOf(view.state.values);
   const count = JSON.parse(view.private_metadata || "{}").count ?? 1;
-  const errors = {};
-  const entries = [];
-  for (let n = 1; n <= count; n++) {
-    const option = prev[`e${n}_task`]?.option;
-    const hoursText = prev[`e${n}_hours`]?.text ?? "";
-    const bad = hoursError(hoursText);
-    if (bad) errors[`e${n}_hours`] = bad;
-    if (!option) errors[`e${n}_task`] = "Pick a task.";
-    if (bad || !option) continue;
-    const [id, key, project] = option.value.split("|");
-    entries.push({
-      hours: parseHours(hoursText),
-      task: { id, key, name: option.text.text.replace(/^[^·]*·\s*/, ""), project: { name: project } },
-      spentOn: prev[`e${n}_date`]?.date,
-      comment: prev[`e${n}_notes`]?.text ?? "",
-    });
-  }
-  if (Object.keys(errors).length) return ack({ response_action: "errors", errors });
+  const { errors, entries } = readLogTimeForm(view.state.values, count);
+  if (errors) return ack({ response_action: "errors", errors });
   await ack();
   const dm = (message) => dmUser(client, body.user.id, message);
   try {
-    await dm(await logEntries(await vynkUser(client, body.user.id), entries));
+    const user = await vynkUser(client, body.user.id);
+    for (const e of entries) {
+      if (!e.newTask) continue;
+      const { title, projectId, identifier, projectName } = e.newTask;
+      // oxlint-disable-next-line no-await-in-loop -- tasks are created in order, then logged in order
+      const created = await user.plane.createTask({ projectId, name: title, assigneeId: user.id });
+      e.task = {
+        id: created.id,
+        key: `${identifier}-${created.sequence_id}`,
+        name: title,
+        project: { name: projectName },
+      };
+    }
+    await dm(await logEntries(user, entries));
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("log_time submit failed", err);
     await dm(errorReply(err));
@@ -314,9 +379,7 @@ app.command("/log-time", async ({ ack, command: cmd, client, respond, logger }) 
   try {
     const parsed = parseLogTime(cmd.text);
     if (parsed.hours === null || parsed.taskKey === null) {
-      const user = await vynkUser(client, cmd.user_id);
-      const task = parsed.taskKey ? await user.plane.taskByKey(user.id, parsed.taskKey) : null;
-      return await openLogTimeModal(client, cmd.trigger_id, { ...parsed, task });
+      return await openLogTimeModal(client, cmd.trigger_id, cmd.user_id, parsed);
     }
     const hoursProblem = hoursError(String(parsed.hours));
     if (hoursProblem) throw new UserFacingError(hoursProblem);
@@ -580,7 +643,7 @@ app.action(/^menu_.+$/, async ({ ack, body, action, client, respond, logger }) =
   try {
     switch (action.value) {
       case "log_time":
-        return await openLogTimeModal(client, body.trigger_id);
+        return await openLogTimeModal(client, body.trigger_id, body.user.id);
       case "create_task":
         return await openCreateTaskModal(client, body.trigger_id, body.user.id);
       case "week_hours":
@@ -607,7 +670,7 @@ app.action("connect_vynk", async ({ ack }) => {
 
 app.action("open_log_time", async ({ ack, body, client }) => {
   await ack();
-  await openLogTimeModal(client, body.trigger_id);
+  await openLogTimeModal(client, body.trigger_id, body.user.id);
 });
 
 app.action("show_week", async ({ ack, body, action, client, respond, logger }) => {

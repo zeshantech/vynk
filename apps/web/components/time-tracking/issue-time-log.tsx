@@ -8,6 +8,7 @@ import { useState } from "react";
 import { observer } from "mobx-react";
 import useSWR, { mutate } from "swr";
 import { Button } from "@makeplane/propel/components/button";
+import { ChevronDownOutline, ClockOutline } from "@makeplane/propel/icons";
 import { setToast } from "@plane/blocks/toast";
 import { EUserPermissionsLevel } from "@plane/constants";
 import { EUserWorkspaceRoles } from "@plane/types";
@@ -16,112 +17,72 @@ import { useUser, useUserPermissions } from "@/hooks/store/user";
 // services
 import { timeEntryService } from "@/services/time-entry.service";
 // local
-import { formatMinutes, fromIsoDay, parseDuration, toIsoDay } from "./utils";
-
-const FIELD =
-  "h-8 rounded-md border border-subtle bg-surface-1 px-2 text-body-sm-regular text-primary outline-none placeholder:text-placeholder focus:border-accent-primary";
+import { LogTimeDialog } from "./log-time-dialog";
+import { formatMinutes, fromIsoDay } from "./utils";
 
 type Props = { workspaceSlug: string; projectId: string; issueId: string; disabled?: boolean };
 
-/** Time spent on one work item: who logged what, plus a one-line form to add more. */
+/** The work item's time card: total logged, "Add time" (a dialog), and who logged what. */
 export const IssueTimeLog = observer(function IssueTimeLog({ workspaceSlug, projectId, issueId, disabled }: Props) {
   const { data: me } = useUser();
   const { allowPermissions } = useUserPermissions();
   const isAdmin = allowPermissions([EUserWorkspaceRoles.ADMIN] as any, EUserPermissionsLevel.WORKSPACE);
-  const [duration, setDuration] = useState("");
-  const [day, setDay] = useState(toIsoDay(new Date()));
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const key = ["issue-time-entries", issueId];
   const { data: entries } = useSWR(key, () => timeEntryService.forIssue(workspaceSlug, projectId, issueId));
   const total = (entries ?? []).reduce((sum, e) => sum + e.minutes, 0);
-  const refreshSheets = () => mutate((k) => Array.isArray(k) && k[0] === "timesheet");
-
-  const add = async () => {
-    if (busy) return;
-    if (parseDuration(duration) === null) return setError("Enter a duration such as 1h30, 45m or 1.5.");
-    setBusy(true);
-    setError("");
-    try {
-      await timeEntryService.log(workspaceSlug, projectId, issueId, {
-        minutes: duration,
-        spent_on: day,
-        comment: note,
-      });
-      setDuration("");
-      setNote("");
-      await mutate(key);
-      void refreshSheets();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const mine = (entries ?? []).filter((e) => e.user.id === me?.id).reduce((sum, e) => sum + e.minutes, 0);
+  const refresh = () => mutate((k) => Array.isArray(k) && (k[0] === "timesheet" || k[0] === "issue-time-entries"));
 
   const remove = async (id: string) => {
     try {
       await timeEntryService.remove(workspaceSlug, projectId, issueId, id);
-      await mutate(key);
-      void refreshSheets();
+      await refresh();
     } catch (e) {
       setToast({ type: "error", title: "Couldn't remove it", message: (e as Error).message });
     }
   };
 
   return (
-    <section className="mt-6 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-h5-medium text-primary">Time</h3>
-        <span className="text-body-sm-medium text-secondary">
-          {total ? `${formatMinutes(total)} logged` : "Nothing logged yet"}
-        </span>
+    <section className="mt-6 rounded-lg border border-subtle bg-layer-1">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="flex items-center gap-1.5 text-body-sm-medium text-primary">
+            <ClockOutline className="size-4" />
+            Time tracking
+          </h3>
+          <p className="mt-0.5 text-body-xs-regular text-tertiary">
+            Total <span className="text-body-xs-medium text-primary">{formatMinutes(total)}</span>
+            {mine > 0 && mine !== total && (
+              <>
+                {"  ·  "}You <span className="text-body-xs-medium text-primary">{formatMinutes(mine)}</span>
+              </>
+            )}
+          </p>
+        </div>
+        {!disabled && (
+          <Button variant="secondary" size="md" stretch="auto" label="Add time" onClick={() => setAdding(true)} />
+        )}
+        {!!entries?.length && (
+          <button
+            type="button"
+            className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-layer-2 hover:text-primary"
+            aria-label={open ? "Hide time entries" : "Show time entries"}
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            <ChevronDownOutline className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        )}
       </div>
 
-      {!disabled && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            className={`${FIELD} w-24`}
-            placeholder="1h 30m"
-            aria-label="Time spent"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void add()}
-          />
-          <input
-            type="date"
-            className={FIELD}
-            value={day}
-            max={toIsoDay(new Date())}
-            onChange={(e) => setDay(e.target.value)}
-          />
-          <input
-            className={`${FIELD} min-w-40 flex-1`}
-            placeholder="Note (optional)"
-            maxLength={500}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void add()}
-          />
-          <Button
-            variant="secondary"
-            size="md"
-            stretch="auto"
-            label={busy ? "Logging…" : "Log time"}
-            disabled={busy}
-            onClick={() => void add()}
-          />
-        </div>
-      )}
-      {error && <p className="text-body-sm-regular text-danger-primary">{error}</p>}
-
-      {!!entries?.length && (
-        <ul className="divide-y divide-subtle rounded-lg border border-subtle">
+      {open && !!entries?.length && (
+        <ul className="divide-y divide-subtle border-t border-subtle">
           {entries.map((e) => (
-            <li key={e.id} className="flex items-center gap-3 px-3 py-2 text-body-sm-regular">
-              <span className="w-14 shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
+            <li key={e.id} className="flex items-center gap-3 px-4 py-2 text-body-sm-regular">
+              <span className="w-16 shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
               <span className="shrink-0 text-secondary">{e.user.display_name}</span>
               <span className="shrink-0 text-tertiary">
                 {fromIsoDay(e.spent_on).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
@@ -140,6 +101,18 @@ export const IssueTimeLog = observer(function IssueTimeLog({ workspaceSlug, proj
           ))}
         </ul>
       )}
+
+      <LogTimeDialog
+        isOpen={adding}
+        onClose={() => setAdding(false)}
+        workspaceSlug={workspaceSlug}
+        projectId={projectId}
+        issueId={issueId}
+        onLogged={() => {
+          setOpen(true);
+          void refresh();
+        }}
+      />
     </section>
   );
 });
