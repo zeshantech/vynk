@@ -38,8 +38,10 @@ export const personName = (u) =>
   u.display_name || [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || u.id;
 
 export class Vynk {
-  constructor({ baseUrl, workspace, apiKey, fetchImpl = fetch }) {
+  /** baseUrl: where the API is reached; publicUrl: the address people use (for links), defaults to baseUrl. */
+  constructor({ baseUrl, publicUrl, workspace, apiKey, fetchImpl = fetch }) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.publicUrl = (publicUrl ?? baseUrl).replace(/\/$/, "");
     this.workspace = workspace;
     this.apiKey = apiKey;
     this.fetch = fetchImpl;
@@ -47,7 +49,7 @@ export class Vynk {
   }
 
   link(path) {
-    return `${this.baseUrl}/${this.workspace}${path}`;
+    return `${this.publicUrl}/${this.workspace}${path}`;
   }
 
   /** path: below /api/v1 (e.g. "/users/me/"). */

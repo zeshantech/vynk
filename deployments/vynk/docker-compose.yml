@@ -177,6 +177,21 @@ services:
       REMINDER_MIN_HOURS: ${REMINDER_MIN_HOURS:-40}
     depends_on: [api]
 
+  # MCP server for AI assistants (Claude etc.) at ${WEB_URL}/mcp/<workspace>, routed by the server's Caddy
+  # (see Caddyfile.snippet). Holds no secrets: each caller sends their own Vynk personal access token.
+  mcp:
+    image: ${IMAGE_PREFIX}-mcp:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      VYNK_URL: ${WEB_URL}
+      VYNK_API_BASE: http://api:8000
+      MCP_HTTP_PORT: 3100
+    depends_on: [api]
+    networks:
+      default:
+      shared_net:
+        aliases: [vynk-mcp]
+
   plane-mq:
     image: rabbitmq:3.13.6-management-alpine
     restart: unless-stopped

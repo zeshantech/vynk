@@ -17,7 +17,22 @@ People, statuses, labels, cycles and modules are given by name (`"Ali"`, `"me"`,
 
 Everything runs with your own permissions: you only see projects you're a member of, admin-only actions need an admin, and the 24h-per-day time limit applies. Most clients ask before running a tool that changes something; `delete_task` and `vynk_api` are marked as destructive.
 
-## Setup
+## Use the hosted server (nothing to install)
+
+It runs on the Vynk server at `https://vynk.robustcraft.com/mcp/<workspace-slug>`. Each person uses their own token:
+
+1. In Vynk: avatar → **Profile settings → Personal access tokens → Add**. Copy the token. It acts as you, so keep it private.
+2. Claude Code:
+
+```bash
+claude mcp add --transport http vynk https://vynk.robustcraft.com/mcp/robustcraft --header "Authorization: Bearer <token>"
+```
+
+Any client that supports remote MCP servers with a custom header works the same way (URL + `Authorization: Bearer <token>`). Claude.ai and Claude Desktop "custom connectors" sign in with OAuth, which this server doesn't offer yet; use the local setup below for Claude Desktop.
+
+The server keeps no tokens: it passes each request's token to the Vynk API and forgets it.
+
+## Run it locally instead
 
 1. In Vynk: avatar → **Profile settings → Personal access tokens → Add**. Copy the token. It acts as you, so keep it private.
 2. Install once (needs Node 22+): `cd integrations/mcp-server && npm ci`
@@ -50,4 +65,4 @@ Then ask the assistant to run `whoami` to check it's connected. For several work
 
 ## Development
 
-`npm test` runs the tools through a real MCP client against a fake Vynk API. The server talks MCP over stdio, so it logs to stderr only.
+`npm test` runs the tools through real MCP clients (in-memory and HTTP) against a fake Vynk API. Locally the server talks MCP over stdio, so it logs to stderr only. With `MCP_HTTP_PORT` set it serves Streamable HTTP (stateless, JSON responses) at `/mcp/<workspace>` and `/mcp/health`; `VYNK_API_BASE` is where it reaches the API (`http://api:8000` in Docker), `VYNK_URL` the public address used in links. Deployed as the `mcp` service in `deployments/vynk/docker-compose.yml`, routed by Caddy (`Caddyfile.snippet`).
