@@ -21,6 +21,7 @@ export const RESTRICTED_URLS: string[] = [
   "profile",
   "spaces",
   "workspace-invitations",
+  "slack",
   "password",
   "flags",
   "monitor",

@@ -141,7 +141,8 @@ export const AuthenticationWrapper = observer(function AuthenticationWrapper(pro
     if (currentUser?.id) {
       if (currentUserProfile && currentUserProfile?.id && isUserOnboard) return <>{children}</>;
       else {
-        router.push(`/onboarding`);
+        // keep the page the person was going to (e.g. a Slack connect link) for after onboarding
+        router.push(`/onboarding${pathname && pathname !== "/" ? `?next_path=${encodeURIComponent(pathname)}` : ""}`);
         return <></>;
       }
     } else {

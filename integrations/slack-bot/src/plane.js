@@ -1,5 +1,6 @@
-// Minimal client for the Vynk (Plane) public API, using one workspace admin's API key.
-// Admin keys may act for other people (user_id), which is how Slack users log time as themselves.
+// Minimal clients for the Vynk (Plane) public API.
+// `Plane` talks to one workspace with one person's API key (made when they connect Slack).
+// `SlackLinks` asks Vynk which account and workspace a Slack user connected, using the shared bot secret.
 
 export class PlaneError extends Error {
   constructor(message, status) {
@@ -149,5 +150,52 @@ export class Plane {
       projectTitle: e.project.name,
       comment: e.comment,
     }));
+  }
+}
+
+/** Which Vynk account and workspace each Slack user connected (see /slack/connect/<code> in Vynk). */
+export class SlackLinks {
+  constructor({ baseUrl, secret, teamId = null }) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.secret = secret;
+    this.teamId = teamId;
+  }
+
+  async request(method, path, body) {
+    const res = await fetch(`${this.baseUrl}/api/v1/slack${path}`, {
+      method,
+      headers: { "X-Slack-Bot-Secret": this.secret, "Content-Type": "application/json", Accept: "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { error: text.slice(0, 200) };
+    }
+    if (res.status === 404 && data?.error === "not_connected") return null;
+    if (!res.ok) {
+      const hint = res.status === 403 ? " (check SLACK_BOT_SECRET matches on the bot and the API)" : "";
+      throw new PlaneError(`${data?.error ?? data?.detail ?? `${res.status} ${res.statusText}`}${hint}`, res.status);
+    }
+    return data;
+  }
+
+  /** The page where this Slack user signs in to Vynk and picks a workspace. */
+  async connectUrl(slackUserId) {
+    const { code } = await this.request("POST", "/connect-code/", { team_id: this.teamId, user_id: slackUserId });
+    return `${this.baseUrl}/slack/connect/${encodeURIComponent(code)}`;
+  }
+
+  /** { user: { id, email, display_name }, workspace: { slug, name }, api_token } or null when not connected. */
+  find(slackUserId) {
+    const q = new URLSearchParams({ team_id: this.teamId, user_id: slackUserId });
+    return this.request("GET", `/link/?${q}`);
+  }
+
+  /** Every connected Slack user (for the weekly reminder). */
+  all() {
+    return this.request("GET", "/links/");
   }
 }

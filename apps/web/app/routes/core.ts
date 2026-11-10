@@ -43,6 +43,11 @@ export const coreRoutes: RouteConfigEntry[] = [
     route("workspace-invitations", "./(all)/workspace-invitations/page.tsx"),
   ]),
 
+  // Slack bot: connect a Slack user to this account
+  layout("./(all)/slack/connect/[code]/layout.tsx", [
+    route("slack/connect/:code", "./(all)/slack/connect/[code]/page.tsx"),
+  ]),
+
   // ========================================================================
   // ALL APP ROUTES
   // ========================================================================

@@ -414,6 +414,9 @@ if APP_BASE_URL and not is_valid_url(APP_BASE_URL):
     APP_BASE_URL = None
 APP_BASE_PATH = os.environ.get("APP_BASE_PATH", "/")
 
+# Shared secret the Slack bot sends to look up connected accounts (empty disables those endpoints)
+SLACK_BOT_SECRET = os.environ.get("SLACK_BOT_SECRET", "")
+
 # Live Base URL
 LIVE_BASE_URL = os.environ.get("LIVE_BASE_URL", None)
 if LIVE_BASE_URL and not is_valid_url(LIVE_BASE_URL):

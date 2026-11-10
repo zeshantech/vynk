@@ -1,8 +1,8 @@
 import bolt from "@slack/bolt";
-import { Plane, PlaneError } from "./plane.js";
+import { Plane, PlaneError, SlackLinks } from "./plane.js";
 import { parseCreateTask, parseLogTime } from "./commands.js";
 import { currentWeek, formatHours, hoursError, parseHours, resolveDate, todayIn } from "./time.js";
-import { escape, loggedView, menuView, tasksView, teamView, weekView } from "./views.js";
+import { connectView, escape, loggedView, menuView, tasksView, teamView, weekView } from "./views.js";
 
 const { App, LogLevel } = bolt;
 
@@ -14,15 +14,15 @@ const env = (name, fallback) => {
 
 const TZ = process.env.BOT_TIMEZONE || "Asia/Karachi";
 const BASE_URL = env("PLANE_URL").replace(/\/$/, "");
-const WORKSPACE = env("PLANE_WORKSPACE_SLUG");
 const MAX_ENTRIES = 5;
 
-// One workspace admin's API key; it logs time *as* each person (matched by email).
-const plane = new Plane({ baseUrl: BASE_URL, workspace: WORKSPACE, apiKey: env("PLANE_API_KEY") });
-const urls = {
-  wp: (key) => `${BASE_URL}/${WORKSPACE}/browse/${key}/`,
-  project: (p) => `${BASE_URL}/${WORKSPACE}/projects/${p.id}/issues/`,
-};
+// Each Slack user connects their own Vynk account and picks a workspace on Vynk; the bot then uses
+// that person's API token in that workspace. The team id is filled in from auth.test at startup.
+const links = new SlackLinks({ baseUrl: BASE_URL, secret: env("SLACK_BOT_SECRET") });
+const urlsFor = (slug) => ({
+  wp: (key) => `${BASE_URL}/${slug}/browse/${key}/`,
+  project: (p) => `${BASE_URL}/${slug}/projects/${p.id}/issues/`,
+});
 
 const app = new App({
   token: env("SLACK_BOT_TOKEN"),
@@ -34,6 +34,13 @@ const app = new App({
 // ---------- helpers ----------
 
 class UserFacingError extends Error {}
+/** The Slack user hasn't connected a Vynk account (or it stopped working); carries the connect link. */
+class NotConnectedError extends UserFacingError {
+  constructor(url) {
+    super("Connect your Vynk account to use the bot.");
+    this.url = url;
+  }
+}
 
 const plain = (text) => ({ type: "plain_text", text, emoji: true });
 const errorText = (err) => {
@@ -41,28 +48,52 @@ const errorText = (err) => {
   if (err instanceof PlaneError) return `:x: Vynk said: ${escape(err.message)}`;
   return ":x: Something went wrong. Please try again.";
 };
+/** An error as a Slack message; not being connected comes with a "Connect Vynk account" button. */
+const errorReply = (err) => (err instanceof NotConnectedError ? connectView(err.url) : { text: errorText(err) });
 // Slack's chat.postMessage, not window.postMessage.
 const dmUser = (client, channel, message) =>
   // oxlint-disable-next-line unicorn/require-post-message-target-origin
   client.chat.postMessage({ channel, ...(typeof message === "string" ? { text: message } : message) });
 const send = (respond, reply) => respond(typeof reply === "string" ? { text: reply } : reply);
 
-const slackEmails = new Map();
-/** The Vynk person behind a Slack user (matched by email). */
-async function vynkUser(client, slackUserId) {
-  let email = slackEmails.get(slackUserId);
-  if (!email) {
-    const info = await client.users.info({ user: slackUserId });
-    email = info.user?.profile?.email?.toLowerCase();
-    if (!email)
-      throw new UserFacingError("I can't see your Slack email address, so I can't match you to a Vynk account.");
-    slackEmails.set(slackUserId, email);
+const linkCache = new Map(); // slack user id -> { link, expires }; only connected users are cached
+const clients = new Map(); // "token|slug" -> Plane, so each client's member cache is reused
+const planeFor = (link) => {
+  const key = `${link.api_token}|${link.workspace.slug}`;
+  if (!clients.has(key))
+    clients.set(key, new Plane({ baseUrl: BASE_URL, workspace: link.workspace.slug, apiKey: link.api_token }));
+  return clients.get(key);
+};
+
+/**
+ * The Vynk person behind a Slack user: { id, email, name, admin, workspace, plane, urls }.
+ * Throws NotConnectedError (with a fresh connect link) when they haven't connected an account.
+ */
+async function vynkUser(_client, slackUserId) {
+  let link = linkCache.get(slackUserId)?.expires > Date.now() ? linkCache.get(slackUserId).link : null;
+  if (!link) {
+    link = await links.find(slackUserId);
+    if (!link) throw new NotConnectedError(await links.connectUrl(slackUserId));
+    linkCache.set(slackUserId, { link, expires: Date.now() + 30_000 });
   }
-  const person = await plane.userByEmail(email);
-  if (!person)
-    throw new UserFacingError(`There's no Vynk account for ${email}. Ask an admin to invite you, then try again.`);
-  return person;
+  // Vynk only returns working links (active token, still a member), so no member lookup is needed;
+  // listing members needs a workspace admin anyway.
+  const { user } = link;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.display_name,
+    admin: Boolean(user.admin),
+    workspace: link.workspace,
+    plane: planeFor(link),
+    urls: urlsFor(link.workspace.slug),
+  };
 }
+
+/** A request failed because the person's token or membership is gone: drop the cached link. */
+const forgetLink = (slackUserId, err) => {
+  if (err instanceof PlaneError && [401, 403].includes(err.status)) linkCache.delete(slackUserId);
+};
 
 async function requireAdmin(client, slackUserId) {
   const user = await vynkUser(client, slackUserId);
@@ -77,8 +108,9 @@ function command(name, handler) {
       const reply = await handler({ cmd, client, text: (cmd.text ?? "").trim() });
       if (reply != null) await send(respond, { response_type: "ephemeral", ...asMessage(reply) });
     } catch (err) {
+      forgetLink(cmd.user_id, err);
       if (!(err instanceof UserFacingError)) logger.error(`${name} failed`, err);
-      await respond({ response_type: "ephemeral", text: errorText(err) });
+      await respond({ response_type: "ephemeral", ...errorReply(err) });
     }
   });
 }
@@ -88,9 +120,9 @@ const asWp = (t) => ({ id: t.key, subject: t.name, _links: { project: { title: t
 
 // ---------- logging time ----------
 
-async function weekTotal(userId) {
+async function weekTotal(user) {
   const week = currentWeek(TZ);
-  const entries = await plane.timeEntries({ from: week.from, to: week.to, userId });
+  const entries = await user.plane.timeEntries({ from: week.from, to: week.to, userId: user.id });
   return entries.reduce((sum, e) => sum + e.hours, 0);
 }
 
@@ -101,7 +133,7 @@ async function logEntries(user, entries) {
   for (const e of entries) {
     try {
       // oxlint-disable-next-line no-await-in-loop -- in order, so the 24h/day cap sees each entry
-      await plane.logTime({
+      await user.plane.logTime({
         userId: user.id,
         issueId: e.task.id,
         hours: e.hours,
@@ -115,7 +147,7 @@ async function logEntries(user, entries) {
   }
   const warning = failed.length ? `\n:warning: Not logged — ${failed.map(escape).join("; ")}` : "";
   if (!results.length) return { text: `:x: Nothing was logged.${warning}` };
-  const view = loggedView({ results, weekLabel: "This week", weekTotal: await weekTotal(user.id), urls });
+  const view = loggedView({ results, weekLabel: "This week", weekTotal: await weekTotal(user), urls: user.urls });
   return failed.length
     ? { ...view, blocks: [...view.blocks, { type: "context", elements: [{ type: "mrkdwn", text: warning.trim() }] }] }
     : view;
@@ -219,8 +251,8 @@ app.options("lt_task", async ({ ack, body, client, logger }) => {
   try {
     const user = await vynkUser(client, body.user.id);
     const q = (body.value ?? "").trim();
-    let tasks = await plane.tasksFor(user.id, { q, assigned: !q, limit: 100 });
-    if (!q && !tasks.length) tasks = await plane.tasksFor(user.id, { limit: 100 });
+    let tasks = await user.plane.tasksFor(user.id, { q, assigned: !q, limit: 100 });
+    if (!q && !tasks.length) tasks = await user.plane.tasksFor(user.id, { limit: 100 });
     await ack({ options: tasks.slice(0, 100).map(taskOption) });
   } catch (err) {
     logger.error("task search failed", err);
@@ -273,7 +305,7 @@ app.view("log_time", async ({ ack, body, view, client, logger }) => {
     await dm(await logEntries(await vynkUser(client, body.user.id), entries));
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("log_time submit failed", err);
-    await dm(errorText(err));
+    await dm(errorReply(err));
   }
 });
 
@@ -283,7 +315,7 @@ app.command("/log-time", async ({ ack, command: cmd, client, respond, logger }) 
     const parsed = parseLogTime(cmd.text);
     if (parsed.hours === null || parsed.taskKey === null) {
       const user = await vynkUser(client, cmd.user_id);
-      const task = parsed.taskKey ? await plane.taskByKey(user.id, parsed.taskKey) : null;
+      const task = parsed.taskKey ? await user.plane.taskByKey(user.id, parsed.taskKey) : null;
       return await openLogTimeModal(client, cmd.trigger_id, { ...parsed, task });
     }
     const hoursProblem = hoursError(String(parsed.hours));
@@ -291,7 +323,7 @@ app.command("/log-time", async ({ ack, command: cmd, client, respond, logger }) 
     const user = await vynkUser(client, cmd.user_id);
     const spentOn = resolveDate(parsed.date, TZ);
     if (!spentOn) throw new UserFacingError("Date must be `today`, `yesterday` or `YYYY-MM-DD`.");
-    const task = await plane.taskByKey(user.id, parsed.taskKey);
+    const task = await user.plane.taskByKey(user.id, parsed.taskKey);
     if (!task)
       throw new UserFacingError(`I can't find an open task ${parsed.taskKey} in a project you can log time on.`);
     await send(respond, {
@@ -300,7 +332,7 @@ app.command("/log-time", async ({ ack, command: cmd, client, respond, logger }) 
     });
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("/log-time failed", err);
-    await respond({ response_type: "ephemeral", text: errorText(err) });
+    await respond({ response_type: "ephemeral", ...errorReply(err) });
   }
 });
 
@@ -310,12 +342,12 @@ async function weekHours({ cmd, client, text }) {
   const user = await vynkUser(client, cmd.user_id);
   const weeksBack = /^last/i.test(text) ? 1 : 0;
   const week = currentWeek(TZ, weeksBack);
-  const entries = await plane.timeEntries({ from: week.from, to: week.to, userId: user.id });
+  const entries = await user.plane.timeEntries({ from: week.from, to: week.to, userId: user.id });
   return weekView({
     label: weeksBack ? "Last week" : "This week",
     week,
     entries,
-    urls,
+    urls: user.urls,
     otherWeekLabel: weeksBack ? "This week" : "Last week",
     otherWeekValue: weeksBack ? "this" : "last",
   });
@@ -324,18 +356,21 @@ command("/week-hours", weekHours);
 command("/time-week-logged-times", weekHours);
 
 async function teamHours({ cmd, client, text }) {
-  await requireAdmin(client, cmd.user_id);
+  const admin = await requireAdmin(client, cmd.user_id);
   const weeksBack = /^last/i.test(text) ? 1 : 0;
   const week = currentWeek(TZ, weeksBack);
-  const [entries, users] = await Promise.all([plane.timeEntries({ from: week.from, to: week.to }), plane.people()]);
-  return teamView({ label: weeksBack ? "Last week" : "This week", week, users, entries, urls });
+  const [entries, users] = await Promise.all([
+    admin.plane.timeEntries({ from: week.from, to: week.to }),
+    admin.plane.people(),
+  ]);
+  return teamView({ label: weeksBack ? "Last week" : "This week", week, users, entries, urls: admin.urls });
 }
 command("/team-hours", teamHours);
 
 async function myTasks({ cmd, client }) {
   const user = await vynkUser(client, cmd.user_id);
-  const tasks = await plane.tasksFor(user.id, { assigned: true, limit: 30 });
-  return tasksView({ tasks: tasks.map(asWp), urls });
+  const tasks = await user.plane.tasksFor(user.id, { assigned: true, limit: 30 });
+  return tasksView({ tasks: tasks.map(asWp), urls: user.urls });
 }
 command("/my-tasks", myTasks);
 
@@ -343,15 +378,15 @@ async function projectsReply({ cmd, client }) {
   const user = await vynkUser(client, cmd.user_id);
   const week = currentWeek(TZ);
   const [projects, entries] = await Promise.all([
-    plane.projectsFor(user.id),
-    plane.timeEntries({ from: week.from, to: week.to, userId: user.id }),
+    user.plane.projectsFor(user.id),
+    user.plane.timeEntries({ from: week.from, to: week.to, userId: user.id }),
   ]);
   if (!projects.length) return "You're not a member of any project yet.";
   const mine = new Map();
   for (const e of entries) mine.set(e.projectId, (mine.get(e.projectId) ?? 0) + e.hours);
   const lines = projects.map((p) => {
     const hours = mine.get(p.id);
-    return `• <${urls.project(p)}|${escape(p.name)}> \`${escape(p.identifier)}\`${hours ? `  —  ${formatHours(hours)} this week` : ""}`;
+    return `• <${user.urls.project(p)}|${escape(p.name)}> \`${escape(p.identifier)}\`${hours ? `  —  ${formatHours(hours)} this week` : ""}`;
   });
   return {
     text: "Projects",
@@ -396,7 +431,7 @@ function createTaskModal(projects) {
 
 async function openCreateTaskModal(client, triggerId, slackUserId) {
   const user = await vynkUser(client, slackUserId);
-  const projects = await plane.projectsFor(user.id);
+  const projects = await user.plane.projectsFor(user.id);
   if (!projects.length) throw new UserFacingError("You're not a member of any project yet.");
   await client.views.open({ trigger_id: triggerId, view: createTaskModal(projects) });
 }
@@ -408,14 +443,14 @@ app.view("create_task", async ({ ack, body, view, client, logger }) => {
     const user = await vynkUser(client, body.user.id);
     const projectId = view.state.values.project.v.selected_option.value;
     const name = view.state.values.title.v.value.trim();
-    const task = await plane.createTask({ projectId, name, assigneeId: user.id });
-    const key = (await plane.projectsFor(user.id)).find((p) => p.id === projectId)?.identifier;
+    const task = await user.plane.createTask({ projectId, name, assigneeId: user.id });
+    const key = (await user.plane.projectsFor(user.id)).find((p) => p.id === projectId)?.identifier;
     await dm(
-      `:white_check_mark: Created <${urls.wp(`${key}-${task.sequence_id}`)}|${escape(name)}> and assigned it to you.`
+      `:white_check_mark: Created <${user.urls.wp(`${key}-${task.sequence_id}`)}|${escape(name)}> and assigned it to you.`
     );
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("create_task failed", err);
-    await dm(errorText(err));
+    await dm(errorReply(err));
   }
 });
 
@@ -426,26 +461,26 @@ app.command("/create-task", async ({ ack, command: cmd, client, respond, logger 
     if (!projectName || !subject) return await openCreateTaskModal(client, cmd.trigger_id, cmd.user_id);
     const user = await vynkUser(client, cmd.user_id);
     const needle = projectName.toLowerCase();
-    const projects = await plane.projectsFor(user.id);
+    const projects = await user.plane.projectsFor(user.id);
     const project =
       projects.find((p) => p.identifier.toLowerCase() === needle || p.name.toLowerCase() === needle) ??
       projects.find((p) => p.name.toLowerCase().includes(needle));
     if (!project)
       throw new UserFacingError(`I can't find a project like "${projectName}" that you belong to. Try \`/projects\`.`);
-    const task = await plane.createTask({ projectId: project.id, name: subject, assigneeId: user.id });
+    const task = await user.plane.createTask({ projectId: project.id, name: subject, assigneeId: user.id });
     await respond({
       response_type: "ephemeral",
-      text: `:white_check_mark: Created <${urls.wp(`${project.identifier}-${task.sequence_id}`)}|${escape(subject)}> in ${escape(project.name)}.`,
+      text: `:white_check_mark: Created <${user.urls.wp(`${project.identifier}-${task.sequence_id}`)}|${escape(subject)}> in ${escape(project.name)}.`,
     });
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("/create-task failed", err);
-    await respond({ response_type: "ephemeral", text: errorText(err) });
+    await respond({ response_type: "ephemeral", ...errorReply(err) });
   }
 });
 
 async function createProjectFor(admin, name) {
-  const project = await plane.createProject({ name, leadId: admin.id });
-  return `:white_check_mark: Created project <${urls.project(project)}|${escape(project.name)}> (\`${escape(project.identifier)}\`). You're its admin.`;
+  const project = await admin.plane.createProject({ name, leadId: admin.id });
+  return `:white_check_mark: Created project <${admin.urls.project(project)}|${escape(project.name)}> (\`${escape(project.identifier)}\`). You're its admin.`;
 }
 
 app.view("create_project", async ({ ack, body, view, client, logger }) => {
@@ -455,7 +490,7 @@ app.view("create_project", async ({ ack, body, view, client, logger }) => {
     await dm(await createProjectFor(await requireAdmin(client, body.user.id), view.state.values.name.v.value.trim()));
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("create_project failed", err);
-    await dm(errorText(err));
+    await dm(errorReply(err));
   }
 });
 
@@ -493,10 +528,17 @@ const MENU = [
   ["create_task", "New task"],
 ];
 const ADMIN_MENU = [["team_hours", "Team hours"]];
+const menuFor = (user) => menuView(MENU, user.admin ? ADMIN_MENU : [], user.name, user.workspace.name);
 
-command("/vynk", async ({ cmd, client }) => {
+/** The connect page again, to pick another workspace (or reconnect). */
+async function switchWorkspace(slackUserId) {
+  return connectView(await links.connectUrl(slackUserId), { switching: true });
+}
+
+command("/vynk", async ({ cmd, client, text }) => {
+  if (/^(switch|workspace|connect)/i.test(text)) return switchWorkspace(cmd.user_id);
   const user = await vynkUser(client, cmd.user_id);
-  return menuView(MENU, user.admin ? ADMIN_MENU : [], user.name);
+  return menuFor(user);
 });
 
 app.event("app_mention", async ({ event, client, logger }) => {
@@ -505,13 +547,11 @@ app.event("app_mention", async ({ event, client, logger }) => {
     await client.chat.postEphemeral({
       channel: event.channel,
       user: event.user,
-      ...menuView(MENU, user.admin ? ADMIN_MENU : [], user.name),
+      ...menuFor(user),
     });
   } catch (err) {
     logger.error("mention failed", err);
-    await client.chat
-      .postEphemeral({ channel: event.channel, user: event.user, text: errorText(err) })
-      .catch(() => null);
+    await client.chat.postEphemeral({ channel: event.channel, user: event.user, ...errorReply(err) }).catch(() => null);
   }
 });
 
@@ -523,12 +563,12 @@ app.message(async ({ message, client, logger }) => {
     await client.chat.postEphemeral({
       channel: message.channel,
       user: message.user,
-      ...menuView(MENU, user.admin ? ADMIN_MENU : [], user.name),
+      ...menuFor(user),
     });
   } catch (err) {
     logger.error("dm failed", err);
     await client.chat
-      .postEphemeral({ channel: message.channel, user: message.user, text: errorText(err) })
+      .postEphemeral({ channel: message.channel, user: message.user, ...errorReply(err) })
       .catch(() => null);
   }
 });
@@ -549,13 +589,20 @@ app.action(/^menu_.+$/, async ({ ack, body, action, client, respond, logger }) =
         return await reply(await myTasks({ cmd, client }));
       case "projects":
         return await reply(await projectsReply({ cmd, client }));
+      case "switch_workspace":
+        return await reply(await switchWorkspace(body.user.id));
       case "team_hours":
         return await reply(await teamHours({ cmd, client, text: "" }));
     }
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("menu failed", err);
-    await reply(errorText(err));
+    await reply(errorReply(err));
   }
+});
+
+// The connect button is a link; Slack still sends an action, which only needs an ack.
+app.action("connect_vynk", async ({ ack }) => {
+  await ack();
 });
 
 app.action("open_log_time", async ({ ack, body, client }) => {
@@ -572,7 +619,7 @@ app.action("show_week", async ({ ack, body, action, client, respond, logger }) =
     });
   } catch (err) {
     if (!(err instanceof UserFacingError)) logger.error("show_week failed", err);
-    await respond({ response_type: "ephemeral", replace_original: false, text: errorText(err) });
+    await respond({ response_type: "ephemeral", replace_original: false, ...errorReply(err) });
   }
 });
 
@@ -601,21 +648,22 @@ function nowParts() {
 
 async function sendReminders() {
   const week = currentWeek(TZ);
-  const [entries, people] = await Promise.all([plane.timeEntries({ from: week.from, to: week.to }), plane.people()]);
-  for (const person of people) {
-    const hours = entries.filter((e) => e.userId === person.id).reduce((s, e) => s + e.hours, 0);
-    if (hours >= REMINDER_MIN_HOURS) continue;
+  // Everyone who connected Slack, in the workspace they picked.
+  for (const link of await links.all()) {
+    if (link.slack_team_id !== links.teamId) continue;
     try {
       // oxlint-disable-next-line no-await-in-loop -- one person at a time stays inside Slack's rate limits
-      const slackUser = (await app.client.users.lookupByEmail({ email: person.email })).user;
+      const entries = await planeFor(link).timeEntries({ from: week.from, to: week.to, userId: link.user.id });
+      const hours = entries.reduce((s, e) => s + e.hours, 0);
+      if (hours >= REMINDER_MIN_HOURS) continue;
       // oxlint-disable-next-line no-await-in-loop -- same reason
       await dmUser(
         app.client,
-        slackUser.id,
-        `You've logged ${formatHours(hours)} this week (target ${REMINDER_MIN_HOURS}h). Type /log-time to add the rest.`
+        link.slack_user_id,
+        `You've logged ${formatHours(hours)} this week in ${link.workspace.name} (target ${REMINDER_MIN_HOURS}h). Type /log-time to add the rest.`
       );
-    } catch {
-      // not in Slack: nothing to do
+    } catch (err) {
+      console.error(`reminder for ${link.slack_user_id} failed`, err);
     }
   }
 }
@@ -634,5 +682,7 @@ if (REMINDER_DAY) {
   }, 30_000);
 }
 
+// Know our Slack team before any event arrives: links are stored per team.
+links.teamId = (await app.client.auth.test()).team_id;
 await app.start();
-console.log(`Vynk Slack bot running (Plane workspace "${WORKSPACE}").`);
+console.log(`Vynk Slack bot running for Slack team ${links.teamId} (Vynk at ${BASE_URL}).`);

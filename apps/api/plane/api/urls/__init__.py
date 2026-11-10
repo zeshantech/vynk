@@ -15,6 +15,7 @@ from .work_item import urlpatterns as work_item_patterns
 from .invite import urlpatterns as invite_patterns
 from .sticky import urlpatterns as sticky_patterns
 from .time_entry import urlpatterns as time_entry_patterns
+from .slack import urlpatterns as slack_patterns
 
 urlpatterns = [
     *asset_patterns,
@@ -30,4 +31,5 @@ urlpatterns = [
     *invite_patterns,
     *sticky_patterns,
     *time_entry_patterns,
+    *slack_patterns,
 ]

@@ -297,11 +297,17 @@ export function teamView({ label, week, users, entries, urls }) {
   return withTable(`Team hours: ${formatHours(total)}`, before, rows, [null, null, null, "right"], after);
 }
 
-export function menuView(options, adminOptions = [], signedInAs = null) {
+export function menuView(options, adminOptions = [], signedInAs = null, workspaceName = null) {
   const buttons = (list, primaryFirst) =>
     list.map(([value, label], i) =>
       button(label, `menu_${value}`, value, primaryFirst && i === 0 ? "primary" : undefined)
     );
+  const who = [
+    signedInAs ? `Signed in as *${escape(signedInAs)}*` : null,
+    workspaceName ? `in *${escape(workspaceName)}*` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return {
     text: "What would you like to do?",
     blocks: [
@@ -310,7 +316,46 @@ export function menuView(options, adminOptions = [], signedInAs = null) {
       ...(adminOptions.length
         ? [context("Admin"), { type: "actions", block_id: "menu_admin", elements: buttons(adminOptions, false) }]
         : []),
-      ...(signedInAs ? [context(`Signed in as *${escape(signedInAs)}*  ·  \`/vynk disconnect\` to sign out`)] : []),
+      ...(who
+        ? [
+            {
+              type: "context",
+              elements: [md(who)],
+            },
+            {
+              type: "actions",
+              block_id: "menu_account",
+              elements: [button("Switch workspace", "menu_switch_workspace", "switch_workspace")],
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+/** A "Connect Vynk account" link button (sign in or sign up on Vynk, then pick a workspace). */
+export function connectView(url, { switching = false } = {}) {
+  const text = switching
+    ? "Pick the Vynk workspace the bot should use for you (or join one you've been invited to)."
+    : "Connect your Vynk account to use the bot. You'll sign in (or sign up) on Vynk and pick a workspace; invitations waiting for you show up there too.";
+  return {
+    text,
+    blocks: [
+      { type: "section", text: md(text) },
+      {
+        type: "actions",
+        block_id: "connect",
+        elements: [
+          {
+            type: "button",
+            action_id: "connect_vynk",
+            text: { type: "plain_text", text: switching ? "Choose workspace" : "Connect Vynk account", emoji: true },
+            url,
+            style: "primary",
+          },
+        ],
+      },
+      context("The link works for an hour and only for you."),
     ],
   };
 }

@@ -14,6 +14,7 @@ RESTRICTED_WORKSPACE_SLUGS = [
     "profile",
     "spaces",
     "workspace-invitations",
+    "slack",
     "password",
     "flags",
     "monitor",

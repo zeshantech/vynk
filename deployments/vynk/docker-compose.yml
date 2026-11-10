@@ -60,6 +60,8 @@ x-app-env: &app-env
   RABBITMQ_VHOST: ${RABBITMQ_VHOST:-vynk}
   API_KEY_RATE_LIMIT: ${API_KEY_RATE_LIMIT:-60/minute}
   LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY}
+  # Shared with the slack-bot service; it lets the bot look up who connected Slack (empty = off)
+  SLACK_BOT_SECRET: ${SLACK_BOT_SECRET:-}
   # Optional: email defaults (can also be set in the admin UI)
   EMAIL_FROM: ${EMAIL_FROM:-Vynk <no-reply@robustcraft.com>}
   EMAIL_HOST: ${EMAIL_HOST:-}
@@ -166,8 +168,7 @@ services:
     restart: unless-stopped
     environment:
       PLANE_URL: ${WEB_URL}
-      PLANE_WORKSPACE_SLUG: ${PLANE_WORKSPACE_SLUG:-}
-      PLANE_API_KEY: ${PLANE_API_KEY:-}
+      SLACK_BOT_SECRET: ${SLACK_BOT_SECRET:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       BOT_TIMEZONE: ${BOT_TIMEZONE:-Asia/Karachi}

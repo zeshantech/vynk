@@ -92,3 +92,4 @@ from .sticky import Sticky
 from .description import Description, DescriptionVersion
 
 from .time_entry import TimeEntry
+from .slack_link import SlackAccountLink
