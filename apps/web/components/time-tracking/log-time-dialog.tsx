@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { observer } from "mobx-react";
 import { Button } from "@makeplane/propel/components/button";
 import {
   Dialog,
@@ -20,15 +21,16 @@ import {
 } from "@makeplane/propel/components/dialog";
 import { Icon } from "@makeplane/propel/components/icon";
 import { IconButton } from "@makeplane/propel/components/icon-button";
-import { CloseOutline } from "@makeplane/propel/icons";
+import { Input, InputGroup } from "@makeplane/propel/components/input";
+import { CalendarOutline, CloseOutline } from "@makeplane/propel/icons";
+import { DateSelect } from "@plane/blocks/property-select";
+// hooks
+import { useUserProfile } from "@/hooks/store/user";
 // services
 import { timeEntryService } from "@/services/time-entry.service";
 // local
-import { formatMinutes, parseDuration, toIsoDay } from "./utils";
-
-const FIELD =
-  "h-9 w-full rounded-md border border-subtle bg-surface-1 px-3 text-body-sm-regular text-primary outline-none placeholder:text-placeholder focus:border-accent-primary";
-const QUICK = ["15m", "30m", "1h", "2h", "4h"];
+import { DurationField } from "./duration-field";
+import { formatMinutes, fromIsoDay, parseDuration, toIsoDay } from "./utils";
 
 type Props = {
   isOpen: boolean;
@@ -40,7 +42,15 @@ type Props = {
 };
 
 /** "Add time" for one work item: duration (with quick picks), day and an optional note. */
-export function LogTimeDialog({ isOpen, onClose, onLogged, workspaceSlug, projectId, issueId }: Props) {
+export const LogTimeDialog = observer(function LogTimeDialog({
+  isOpen,
+  onClose,
+  onLogged,
+  workspaceSlug,
+  projectId,
+  issueId,
+}: Props) {
+  const { data: profile } = useUserProfile();
   const [duration, setDuration] = useState("");
   const [day, setDay] = useState(toIsoDay(new Date()));
   const [note, setNote] = useState("");
@@ -109,56 +119,33 @@ export function LogTimeDialog({ isOpen, onClose, onLogged, workspaceSlug, projec
             </DialogHeader>
             <DialogBody>
               <div className="flex flex-col gap-4">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-body-xs-medium text-secondary">Time spent</span>
-                  <input
-                    className={FIELD}
-                    placeholder="1h 30m, 45m or 1.5"
-                    value={duration}
-                    // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog exists to type a duration
-                    autoFocus
-                    onChange={(e) => setDuration(e.target.value)}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-caption-md-medium text-tertiary">Time spent</span>
+                  <DurationField value={duration} onChange={setDuration} focusOnOpen />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-caption-md-medium text-tertiary">Day</span>
+                  <DateSelect
+                    variant="select-md"
+                    value={fromIsoDay(day)}
+                    onChange={(d) => d && setDay(toIsoDay(d))}
+                    maxDate={new Date()}
+                    icon={<CalendarOutline />}
+                    weekStartsOn={profile?.start_of_the_week}
                   />
-                  <span className="flex flex-wrap gap-1.5">
-                    {QUICK.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        className={`rounded-md border px-2 py-0.5 text-body-xs-medium ${
-                          duration === q
-                            ? "border-accent-strong text-accent-primary"
-                            : "border-subtle text-secondary hover:bg-layer-1"
-                        }`}
-                        onClick={() => setDuration(q)}
-                      >
-                        {q}
-                      </button>
-                    ))}
-                    {minutes !== null && minutes > 0 && !QUICK.includes(duration) && (
-                      <span className="self-center text-body-xs-regular text-tertiary">= {formatMinutes(minutes)}</span>
-                    )}
-                  </span>
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-body-xs-medium text-secondary">Date</span>
-                  <input
-                    type="date"
-                    className={FIELD}
-                    value={day}
-                    max={toIsoDay(new Date())}
-                    onChange={(e) => setDay(e.target.value)}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-body-xs-medium text-secondary">Note (optional)</span>
-                  <input
-                    className={FIELD}
-                    placeholder="What did you work on?"
-                    maxLength={500}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                </label>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-caption-md-medium text-tertiary">Note (optional)</span>
+                  <InputGroup size="md">
+                    <Input
+                      size="md"
+                      placeholder="What did you work on?"
+                      maxLength={500}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                  </InputGroup>
+                </div>
                 {error && <p className="text-body-sm-regular text-danger-primary">{error}</p>}
               </div>
             </DialogBody>
@@ -170,12 +157,12 @@ export function LogTimeDialog({ isOpen, onClose, onLogged, workspaceSlug, projec
               size="md"
               stretch="auto"
               type="submit"
-              label={busy ? "Logging…" : "Log time"}
-              disabled={busy}
+              label={minutes ? `Log ${formatMinutes(minutes)}` : "Log time"}
+              loading={busy}
             />
           </DialogActions>
         </form>
       </DialogContent>
     </Dialog>
   );
-}
+});

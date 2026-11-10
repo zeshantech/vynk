@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import useSWR, { mutate } from "swr";
+import { Button } from "@makeplane/propel/components/button";
+import { Tab, Tabs, TabsList } from "@makeplane/propel/components/tabs";
 import { ClockOutline } from "@makeplane/propel/icons";
 import { EUserPermissionsLevel } from "@plane/constants";
 import { EUserWorkspaceRoles } from "@plane/types";
@@ -19,9 +21,7 @@ import { timeEntryService } from "@/services/time-entry.service";
 import { QuickLog } from "./quick-log";
 import { formatMinutes, groupByProject, groupEntries, rangeLabel, weekDays } from "./utils";
 
-const TAB = "rounded-md px-2.5 py-1 text-body-xs-medium";
-
-/** Home: log time in one row, and this week's hours by project and task (admins can switch to the team). */
+/** Home: log time right away, and this week's hours by project and task (admins can switch to the team). */
 export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug }: { workspaceSlug: string }) {
   const { data: me } = useUser();
   const { allowPermissions } = useUserPermissions();
@@ -41,8 +41,7 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
     [view, entries, mine, workspaceSlug]
   );
   const people = useMemo(() => groupEntries(entries ?? [], workspaceSlug), [entries, workspaceSlug]);
-  const myTotal = mine.reduce((s, e) => s + e.minutes, 0);
-  const teamTotal = (entries ?? []).reduce((s, e) => s + e.minutes, 0);
+  const shownTotal = projects.reduce((s, p) => s + p.total, 0);
 
   return (
     <section className="flex flex-col gap-3">
@@ -50,90 +49,89 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
         <div className="flex items-center gap-2">
           <ClockOutline className="size-4 text-secondary" />
           <h3 className="text-body-md-semibold text-primary">Time this week</h3>
-          <span className="text-body-xs-regular text-tertiary">{rangeLabel(days)}</span>
+          <span className="text-caption-md-regular text-tertiary">{rangeLabel(days)}</span>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <div className="flex rounded-md border border-subtle p-0.5" role="tablist" aria-label="Whose hours">
-              {(["mine", "team"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === v}
-                  className={`${TAB} ${view === v ? "bg-layer-2 text-primary" : "text-tertiary hover:text-primary"}`}
-                  onClick={() => setView(v)}
-                >
-                  {v === "mine" ? "Mine" : "Team"}
-                </button>
-              ))}
-            </div>
+            <Tabs variant="contained" value={view} onValueChange={(v: string) => setView(v as "mine" | "team")}>
+              <TabsList>
+                <Tab value="mine" label="Mine" />
+                <Tab value="team" label="Team" />
+              </TabsList>
+            </Tabs>
           )}
-          <Link
-            href={`/${workspaceSlug}/timesheet/`}
-            className="text-body-xs-medium text-accent-primary hover:underline"
-          >
-            Open timesheet
-          </Link>
+          <Button
+            variant="tertiary"
+            size="sm"
+            stretch="auto"
+            label="Open timesheet"
+            nativeButton={false}
+            render={<Link href={`/${workspaceSlug}/timesheet/`} />}
+          />
         </div>
       </div>
 
-      <div className="rounded-lg border border-subtle bg-layer-1 p-4">
-        <QuickLog workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
+      <QuickLog workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
 
-        <div className="mt-4 flex flex-wrap gap-6 border-t border-subtle pt-4">
-          <Stat label="You" value={formatMinutes(myTotal)} />
-          {isAdmin && <Stat label="Team" value={formatMinutes(teamTotal)} />}
-          {isAdmin && <Stat label="People logging" value={String(people.length)} />}
+      <div className="grid gap-3 md:grid-cols-[200px_minmax(0,1fr)]">
+        <div className="flex flex-row gap-3 md:flex-col">
+          <Stat label={view === "team" ? "Team this week" : "You this week"} value={formatMinutes(shownTotal)} />
+          {view === "team" && <Stat label="People logging" value={String(people.length)} />}
         </div>
 
-        {entries && projects.length === 0 && (
-          <p className="mt-4 text-body-sm-regular text-tertiary">
-            {view === "team" ? "Nobody has logged time this week yet." : "You haven't logged time this week yet."}
-          </p>
-        )}
-
-        {projects.length > 0 && (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-3">
-              <h4 className="text-body-xs-medium text-tertiary">By project and task</h4>
-              {projects.map((p) => (
-                <div key={p.id} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-body-sm-medium text-primary">
-                    <span className="truncate">{p.name}</span>
-                    <span>{formatMinutes(p.total)}</span>
-                  </div>
-                  {p.tasks.slice(0, 4).map((t) => (
-                    <Link
-                      key={t.id}
-                      href={t.href}
-                      className="flex items-center justify-between gap-3 pl-3 text-body-xs-regular text-secondary hover:text-primary"
-                    >
-                      <span className="truncate">
-                        <span className="text-tertiary">{t.key}</span> {t.name}
-                      </span>
-                      <span className="shrink-0">{formatMinutes(t.total)}</span>
-                    </Link>
-                  ))}
-                  {p.tasks.length > 4 && (
-                    <span className="pl-3 text-body-xs-regular text-tertiary">+{p.tasks.length - 4} more</span>
-                  )}
-                </div>
-              ))}
-            </div>
-            {view === "team" && (
-              <div className="flex flex-col gap-2">
-                <h4 className="text-body-xs-medium text-tertiary">By person</h4>
-                {people.map((g) => (
-                  <div key={g.userId} className="flex items-center justify-between text-body-sm-regular">
-                    <span className="truncate text-secondary">{g.name}</span>
-                    <span className="text-primary">{formatMinutes(g.total)}</span>
+        <div className="rounded-lg border border-subtle bg-layer-1 p-4">
+          {entries && projects.length === 0 ? (
+            <p className="text-body-sm-regular text-tertiary">
+              {view === "team" ? "Nobody has logged time this week yet." : "You haven't logged time this week yet."}
+            </p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="flex flex-col gap-3">
+                <h4 className="text-caption-md-medium text-tertiary">By project and task</h4>
+                {projects.map((p) => (
+                  <div key={p.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-3 text-body-sm-medium text-primary">
+                      <span className="truncate">{p.name}</span>
+                      <span className="shrink-0">{formatMinutes(p.total)}</span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-layer-2">
+                      <div
+                        className="h-full rounded-full bg-accent-primary"
+                        style={{ width: `${Math.max(4, (p.total / Math.max(shownTotal, 1)) * 100)}%` }}
+                      />
+                    </div>
+                    {p.tasks.slice(0, 3).map((t) => (
+                      <Link
+                        key={t.id}
+                        href={t.href}
+                        className="flex items-center justify-between gap-3 text-caption-md-regular text-secondary hover:text-primary"
+                      >
+                        <span className="truncate">
+                          <span className="text-tertiary">{t.key}</span> {t.name}
+                        </span>
+                        <span className="shrink-0">{formatMinutes(t.total)}</span>
+                      </Link>
+                    ))}
+                    {p.tasks.length > 3 && (
+                      <span className="text-caption-md-regular text-tertiary">+{p.tasks.length - 3} more tasks</span>
+                    )}
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+              {view === "team" && (
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-caption-md-medium text-tertiary">By person</h4>
+                  {people.map((g) => (
+                    <div key={g.userId} className="flex items-center justify-between gap-3 text-body-sm-regular">
+                      <span className="truncate text-secondary">{g.name}</span>
+                      <span className="shrink-0 text-primary">{formatMinutes(g.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -141,9 +139,9 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-body-xs-regular text-tertiary">{label}</span>
-      <span className="text-h5-semibold text-primary">{value}</span>
+    <div className="flex flex-1 flex-col rounded-lg border border-subtle bg-layer-1 px-4 py-3">
+      <span className="text-caption-md-medium text-tertiary">{label}</span>
+      <span className="text-h4-semibold text-primary">{value}</span>
     </div>
   );
 }

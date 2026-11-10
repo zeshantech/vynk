@@ -104,7 +104,8 @@ export const groupEntries = (entries: TTimeEntry[], workspaceSlug: string): TShe
     group.total += e.minutes;
   }
   for (const g of groups.values()) g.rows.sort((a, b) => b.total - a.total);
-  return [...groups.values()].toSorted((a, b) => b.total - a.total);
+  // oxlint-disable-next-line unicorn/no-array-sort -- a fresh array; toSorted isn't in this TS lib target
+  return [...groups.values()].sort((a, b) => b.total - a.total);
 };
 
 export type TProjectTotal = {

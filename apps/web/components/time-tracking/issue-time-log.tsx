@@ -54,7 +54,7 @@ export const IssueTimeLog = observer(function IssueTimeLog({ workspaceSlug, proj
             Time tracking
           </h3>
           <p className="mt-0.5 text-body-xs-regular text-tertiary">
-            Total <span className="text-body-xs-medium text-primary">{formatMinutes(total)}</span>
+            Total <span className="text-body-xs-medium text-primary">{entries ? formatMinutes(total) : "…"}</span>
             {mine > 0 && mine !== total && (
               <>
                 {"  ·  "}You <span className="text-body-xs-medium text-primary">{formatMinutes(mine)}</span>
