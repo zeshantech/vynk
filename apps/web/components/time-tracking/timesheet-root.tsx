@@ -239,7 +239,6 @@ const MyTime = observer(function MyTime({
   const shownDays = (selected ? [selected] : days)
     .filter((d) => byDay.get(d)?.length)
     .map((d, i, all) => all[all.length - 1 - i]);
-  const wholeRange = rangeLabel([range.from, range.to]);
 
   const scrollBy = (dir: 1 | -1) =>
     grab.ref.current?.scrollBy({ left: dir * grab.ref.current.clientWidth * 0.8, behavior: "smooth" });
@@ -257,7 +256,23 @@ const MyTime = observer(function MyTime({
     <div className="flex flex-col gap-5 pt-5">
       <RangeTotal label="Your time" minutes={sumMinutes(entries)} range={range} />
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={selected === null}
+          onClick={() => setSelected(null)}
+          className={cn(
+            "flex w-28 shrink-0 flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+            selected === null
+              ? "border-accent-strong bg-accent-subtle"
+              : "border-subtle bg-layer-1 hover:bg-layer-transparent-hover"
+          )}
+        >
+          <span className={cn("text-caption-md-medium", selected === null ? "text-accent-primary" : "text-tertiary")}>
+            All days
+          </span>
+          <span className="text-h5-semibold text-primary">{formatMinutes(sumMinutes(entries))}</span>
+        </button>
         <IconButton
           variant="ghost"
           size="md"
@@ -317,25 +332,6 @@ const MyTime = observer(function MyTime({
           onClick={() => scrollBy(1)}
         />
       </div>
-
-      {selected && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-layer-1 px-4 py-2.5">
-          <span className="text-body-sm-regular text-secondary">
-            Showing only{" "}
-            <span className="text-body-sm-medium text-primary">
-              {dayLabel(selected).weekday}, {dayLabel(selected).date}
-            </span>{" "}
-            · {formatMinutes(sumMinutes(byDay.get(selected)))}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            stretch="auto"
-            label={`Show all · ${wholeRange}`}
-            onClick={() => setSelected(null)}
-          />
-        </div>
-      )}
 
       {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
       {!error && !isLoading && !shownDays.length && (

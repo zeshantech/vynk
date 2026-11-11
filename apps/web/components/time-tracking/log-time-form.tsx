@@ -11,6 +11,7 @@ import { TextArea, TextAreaGroup } from "@makeplane/propel/components/text-area"
 import { CalendarOutline } from "@makeplane/propel/icons";
 import { DateSelect } from "@plane/blocks/property-select";
 import { setToast } from "@plane/blocks/toast";
+import { cn } from "@plane/utils";
 // components
 import { ProjectSelect } from "@/components/dropdowns/project/project-select";
 // hooks
@@ -41,13 +42,24 @@ const remember = (task: TTimeTask) => {
   }
 };
 
-type Props = { workspaceSlug: string; onLogged: () => void; onDone?: () => void };
+type Props = {
+  workspaceSlug: string;
+  onLogged: () => void;
+  onDone?: () => void;
+  /** "stacked" for a side panel; "inline" lays the fields in a row for a page (Home). */
+  layout?: "stacked" | "inline";
+};
 
 /**
  * Log time: project, a task in it (type to find one, or type a new title to create it), how long,
  * which day, an optional note. Remembers the last task so the next entry is quick.
  */
-export const LogTimeForm = observer(function LogTimeForm({ workspaceSlug, onLogged, onDone }: Props) {
+export const LogTimeForm = observer(function LogTimeForm({
+  workspaceSlug,
+  onLogged,
+  onDone,
+  layout = "stacked",
+}: Props) {
   const { data: me } = useUser();
   const { data: profile } = useUserProfile();
   const { getProjectById } = useProject();
@@ -116,6 +128,8 @@ export const LogTimeForm = observer(function LogTimeForm({ workspaceSlug, onLogg
         title: `Logged ${formatMinutes(minutes)}`,
         message: `${target.name} · ${target.project.name}`,
       });
+      setDuration("");
+      setNote("");
       onLogged();
       onDone?.();
     } catch (e) {
@@ -125,86 +139,119 @@ export const LogTimeForm = observer(function LogTimeForm({ workspaceSlug, onLogg
     }
   };
 
+  const inline = layout === "inline";
+
+  const projectField = (
+    <Field label="Project">
+      <ProjectSelect
+        variant="select-md"
+        projectList="joined"
+        value={projectId}
+        onChange={chooseProject}
+        placeholder="Any project"
+      />
+    </Field>
+  );
+  const taskField = (
+    <Field label="Task" hint={isNewTask(task) ? "A new task will be created and assigned to you." : undefined}>
+      <TaskSelect
+        key={projectId ?? "all"}
+        workspaceSlug={workspaceSlug}
+        projectId={projectId}
+        value={task}
+        onChange={(t) => {
+          setTask(t);
+          if (!isNewTask(t)) setProjectId(t.project.id);
+          setError("");
+          setTimeout(() => durationRef.current?.focus(), 0);
+        }}
+        className="w-full"
+      />
+    </Field>
+  );
+  const timeField = (
+    <Field label="Time spent">
+      <DurationField value={duration} onChange={setDuration} inputRef={durationRef} />
+    </Field>
+  );
+  const dayField = (
+    <Field label="Day">
+      <DateSelect
+        variant="select-md"
+        value={fromIsoDay(day)}
+        onChange={(d) => d && setDay(toIsoDay(d))}
+        maxDate={new Date()}
+        icon={<CalendarOutline />}
+        weekStartsOn={profile?.start_of_the_week}
+      />
+    </Field>
+  );
+  const noteField = (
+    <Field label="Note (optional)">
+      <TextAreaGroup resize="none">
+        <TextArea
+          size="md"
+          surface="field"
+          autoResize
+          maxRows={6}
+          placeholder="What did you work on?"
+          maxLength={500}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+        />
+      </TextAreaGroup>
+    </Field>
+  );
+  const submitButton = (
+    <Button
+      type="submit"
+      variant="primary"
+      size="lg"
+      stretch={inline ? "auto" : "full"}
+      label={minutes ? `Log ${formatMinutes(minutes)}` : "Log time"}
+      loading={busy}
+    />
+  );
+
   return (
     <form
-      className="flex flex-col gap-5"
+      className={cn("flex flex-col", inline ? "gap-4" : "gap-5")}
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <Field label="Project">
-        <ProjectSelect
-          variant="select-md"
-          projectList="joined"
-          value={projectId}
-          onChange={chooseProject}
-          placeholder="Any project"
-        />
-      </Field>
-
-      <Field label="Task" hint={isNewTask(task) ? "A new task will be created and assigned to you." : undefined}>
-        <TaskSelect
-          key={projectId ?? "all"}
-          workspaceSlug={workspaceSlug}
-          projectId={projectId}
-          value={task}
-          onChange={(t) => {
-            setTask(t);
-            if (!isNewTask(t)) setProjectId(t.project.id);
-            setError("");
-            setTimeout(() => durationRef.current?.focus(), 0);
-          }}
-          className="w-full"
-        />
-      </Field>
-
-      <Field label="Time spent">
-        <DurationField value={duration} onChange={setDuration} inputRef={durationRef} />
-      </Field>
-
-      <Field label="Day">
-        <DateSelect
-          variant="select-md"
-          value={fromIsoDay(day)}
-          onChange={(d) => d && setDay(toIsoDay(d))}
-          maxDate={new Date()}
-          icon={<CalendarOutline />}
-          weekStartsOn={profile?.start_of_the_week}
-        />
-      </Field>
-
-      <Field label="Note (optional)">
-        <TextAreaGroup resize="none">
-          <TextArea
-            size="md"
-            surface="field"
-            autoResize
-            maxRows={6}
-            placeholder="What did you work on?"
-            maxLength={500}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-          />
-        </TextAreaGroup>
-      </Field>
-
-      {error && <p className="text-body-sm-regular text-danger-primary">{error}</p>}
-
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        stretch="full"
-        label={minutes ? `Log ${formatMinutes(minutes)}` : "Log time"}
-        loading={busy}
-      />
+      {inline ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            {projectField}
+            {taskField}
+            {timeField}
+            {dayField}
+          </div>
+          {noteField}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-body-sm-regular text-danger-primary">{error}</p>
+            {submitButton}
+          </div>
+        </>
+      ) : (
+        <>
+          {projectField}
+          {taskField}
+          {timeField}
+          {dayField}
+          {noteField}
+          {error && <p className="text-body-sm-regular text-danger-primary">{error}</p>}
+          {submitButton}
+        </>
+      )}
     </form>
   );
 });

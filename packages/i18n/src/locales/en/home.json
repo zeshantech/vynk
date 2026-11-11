@@ -58,6 +58,9 @@
     "quick_tutorial": {
       "title": "Quick tutorial"
     },
+    "time_tracking": {
+      "title": "Time tracking"
+    },
     "widget": {
       "reordered_successfully": "Widget reordered successfully.",
       "reordering_failed": "Error occurred while reordering widget."

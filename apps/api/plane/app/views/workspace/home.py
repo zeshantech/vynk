@@ -41,6 +41,8 @@ class WorkspaceHomePreferenceViewSet(BaseAPIView):
                 create_preference_keys.append(preference)
 
                 sort_order = 1000 - sort_order_counter
+                # Time tracking starts at the top of Home (people can reorder it in Manage widgets)
+                time_tracking_sort_order = 2000
 
                 preference = WorkspaceHomePreference.objects.bulk_create(
                     [
@@ -48,7 +50,7 @@ class WorkspaceHomePreferenceViewSet(BaseAPIView):
                             key=key,
                             user=request.user,
                             workspace=workspace,
-                            sort_order=sort_order,
+                            sort_order=time_tracking_sort_order if key == "time_tracking" else sort_order,
                         )
                         for key in create_preference_keys
                     ],

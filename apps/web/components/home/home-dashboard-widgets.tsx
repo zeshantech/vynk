@@ -57,6 +57,11 @@ export const HOME_WIDGETS_LIST: {
     fullWidth: false,
     title: "home.quick_tutorial.title",
   },
+  time_tracking: {
+    component: HomeHoursWidget,
+    fullWidth: true,
+    title: "home.time_tracking.title",
+  },
 };
 
 export const DashboardWidgets = observer(function DashboardWidgets() {
@@ -88,7 +93,6 @@ export const DashboardWidgets = observer(function DashboardWidgets() {
         handleOnClose={() => toggleWidgetSettings(false)}
       />
       {!isWikiApp && <NoProjectsEmptyState />}
-      {!isWikiApp && <HomeHoursWidget workspaceSlug={workspaceSlug.toString()} />}
 
       {isAnyWidgetEnabled ? (
         <div className="flex flex-col">

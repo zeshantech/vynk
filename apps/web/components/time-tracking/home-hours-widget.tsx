@@ -18,10 +18,10 @@ import { useUser, useUserPermissions } from "@/hooks/store/user";
 // services
 import { timeEntryService } from "@/services/time-entry.service";
 // local
-import { LogTimeButton } from "./log-time-drawer";
+import { LogTimeForm } from "./log-time-form";
 import { formatMinutes, groupByProject, groupEntries, rangeLabel, weekDays } from "./utils";
 
-/** Home: this week's hours by project and task (admins can switch to the team), and a "Log time" button. */
+/** Home: log time right here, and see this week's hours by project and task (admins can switch to the team). */
 export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug }: { workspaceSlug: string }) {
   const { data: me } = useUser();
   const { allowPermissions } = useUserPermissions();
@@ -69,8 +69,11 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
             nativeButton={false}
             render={<Link href={`/${workspaceSlug}/timesheet/`} />}
           />
-          <LogTimeButton workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
         </div>
+      </div>
+
+      <div className="rounded-lg border border-subtle bg-layer-1 p-5">
+        <LogTimeForm layout="inline" workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
       </div>
 
       <div className="grid gap-4 rounded-lg border border-subtle bg-layer-1 p-5 md:grid-cols-[180px_minmax(0,1fr)]">
