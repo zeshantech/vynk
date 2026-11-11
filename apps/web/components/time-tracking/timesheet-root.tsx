@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import useSWR, { mutate } from "swr";
@@ -36,7 +36,7 @@ import { useUser, useUserPermissions, useUserProfile } from "@/hooks/store/user"
 import type { TTimeEntry } from "@/services/time-entry.service";
 import { timeEntryService } from "@/services/time-entry.service";
 // local
-import { QuickLog } from "./quick-log";
+import { LogTimeButton } from "./log-time-drawer";
 import {
   dayLabel,
   daysBetween,
@@ -47,8 +47,6 @@ import {
   toIsoDay,
   weekDays,
 } from "./utils";
-
-const VISIBLE_DAYS = 7;
 
 const csvCell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
 const downloadCsv = (entries: TTimeEntry[], name: string) => {
@@ -81,7 +79,7 @@ const thisWeek = (): TRange => {
   return { from: w[0], to: w[6] };
 };
 
-/** Timesheet: log time, then look back over any date range; admins also get a Team tab. */
+/** Timesheet: see your hours over any date range (admins also get a Team tab); "Log time" opens a side panel. */
 export const TimesheetRoot = observer(function TimesheetRoot({ workspaceSlug }: { workspaceSlug: string }) {
   const [range, setRange] = useState<TRange>(thisWeek);
   const { data: profile } = useUserProfile();
@@ -91,13 +89,13 @@ export const TimesheetRoot = observer(function TimesheetRoot({ workspaceSlug }: 
   const isThisWeek = range.from === thisWeek().from && range.to === thisWeek().to;
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col gap-5 overflow-y-auto px-4 py-6 md:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col gap-6 overflow-y-auto px-4 py-6 md:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-h4-semibold text-primary">Timesheet</h1>
-          <p className="text-body-sm-regular text-tertiary">Log your hours and see where the time went.</p>
+          <p className="text-body-sm-regular text-tertiary">Your hours, by day and task.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!isThisWeek && (
             <Button
               variant="tertiary"
@@ -107,20 +105,21 @@ export const TimesheetRoot = observer(function TimesheetRoot({ workspaceSlug }: 
               onClick={() => setRange(thisWeek())}
             />
           )}
-          <DateRangeSelect
-            variant="select-md"
-            value={{ from: fromIsoDay(range.from), to: fromIsoDay(range.to) }}
-            onChange={(r) => {
-              if (r.from && r.to) setRange({ from: toIsoDay(r.from), to: toIsoDay(r.to) });
-            }}
-            icon={<CalendarOutline />}
-            weekStartsOn={profile?.start_of_the_week}
-            placeholder="Pick dates"
-          />
+          <div className="w-64 shrink-0">
+            <DateRangeSelect
+              variant="select-md"
+              value={{ from: fromIsoDay(range.from), to: fromIsoDay(range.to) }}
+              onChange={(r) => {
+                if (r.from && r.to) setRange({ from: toIsoDay(r.from), to: toIsoDay(r.to) });
+              }}
+              icon={<CalendarOutline />}
+              weekStartsOn={profile?.start_of_the_week}
+              placeholder="Pick dates"
+            />
+          </div>
+          <LogTimeButton workspaceSlug={workspaceSlug} onLogged={() => void refreshAll()} />
         </div>
       </div>
-
-      <QuickLog workspaceSlug={workspaceSlug} onLogged={() => void refreshAll()} />
 
       {isAdmin ? (
         <Tabs variant="underline" defaultValue="mine">
@@ -154,8 +153,8 @@ function RangeTotal({
   extra?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="text-h4-semibold text-primary">{formatMinutes(minutes)}</span>
+    <div className="flex flex-col">
+      <span className="text-h3-semibold text-primary">{formatMinutes(minutes)}</span>
       <span className="text-body-sm-regular text-tertiary">
         {label} · {rangeLabel([range.from, range.to])}
         {extra ? ` · ${extra}` : ""}
@@ -164,7 +163,43 @@ function RangeTotal({
   );
 }
 
-/** Your time in the range: day cards (click one to see that day, ‹ › for more days) and your entries. */
+/** Scroll a row sideways with the trackpad/wheel, or by grabbing it with the mouse. */
+function useGrabScroll() {
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef({ active: false, x: 0, left: 0, moved: false });
+  return {
+    ref,
+    props: {
+      onPointerDown: (e: React.PointerEvent) => {
+        if (e.pointerType !== "mouse" || e.button !== 0 || !ref.current) return;
+        drag.current = { active: true, x: e.clientX, left: ref.current.scrollLeft, moved: false };
+      },
+      onPointerMove: (e: React.PointerEvent) => {
+        const d = drag.current;
+        if (!d.active || !ref.current) return;
+        const dx = e.clientX - d.x;
+        if (Math.abs(dx) > 4) d.moved = true;
+        if (d.moved) ref.current.scrollLeft = d.left - dx;
+      },
+      onPointerUp: () => {
+        drag.current.active = false;
+      },
+      onPointerLeave: () => {
+        drag.current.active = false;
+      },
+      // a drag must not also click the day card it ended on
+      onClickCapture: (e: React.MouseEvent) => {
+        if (drag.current.moved) {
+          e.stopPropagation();
+          e.preventDefault();
+          drag.current.moved = false;
+        }
+      },
+    },
+  };
+}
+
+/** Your time in the range: scrollable day cards (click one to see just that day) and your entries. */
 const MyTime = observer(function MyTime({
   workspaceSlug,
   range,
@@ -177,14 +212,15 @@ const MyTime = observer(function MyTime({
   const { data: me } = useUser();
   const today = toIsoDay(new Date());
   const [selected, setSelected] = useState<string | null>(null);
-  const [start, setStart] = useState(0);
+  const grab = useGrabScroll();
 
-  // New range: show the window holding today (or the start), and forget the picked day.
+  // New range: forget the picked day and bring today (or the first day) into view.
   useEffect(() => {
-    const i = days.indexOf(today);
-    setStart(i >= 0 ? Math.max(0, Math.min(i - (i % VISIBLE_DAYS), days.length - VISIBLE_DAYS)) : 0);
     setSelected(null);
-  }, [days, today]);
+    const box = grab.ref.current;
+    const target = box?.querySelector<HTMLElement>(`[data-day="${days.includes(today) ? today : days[0]}"]`);
+    if (box && target) box.scrollTo({ left: target.offsetLeft - (box.clientWidth - target.clientWidth) / 2 });
+  }, [days, today, grab.ref]);
 
   const {
     data: entries,
@@ -199,11 +235,14 @@ const MyTime = observer(function MyTime({
     for (const e of entries ?? []) map.set(e.spent_on, [...(map.get(e.spent_on) ?? []), e]);
     return map;
   }, [entries]);
-  const visible = days.slice(start, start + VISIBLE_DAYS);
   // newest day first
   const shownDays = (selected ? [selected] : days)
     .filter((d) => byDay.get(d)?.length)
     .map((d, i, all) => all[all.length - 1 - i]);
+  const wholeRange = rangeLabel([range.from, range.to]);
+
+  const scrollBy = (dir: 1 | -1) =>
+    grab.ref.current?.scrollBy({ left: dir * grab.ref.current.clientWidth * 0.8, behavior: "smooth" });
 
   const remove = async (e: TTimeEntry) => {
     try {
@@ -215,59 +254,55 @@ const MyTime = observer(function MyTime({
   };
 
   return (
-    <div className="flex flex-col gap-4 pt-4">
-      <RangeTotal
-        label="your time"
-        minutes={sumMinutes(entries)}
-        range={range}
-        extra={
-          selected
-            ? `${formatMinutes(sumMinutes(byDay.get(selected)))} on ${dayLabel(selected).weekday} ${fromIsoDay(selected).getDate()}`
-            : undefined
-        }
-      />
+    <div className="flex flex-col gap-5 pt-5">
+      <RangeTotal label="Your time" minutes={sumMinutes(entries)} range={range} />
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <IconButton
           variant="ghost"
           size="md"
-          aria-label="Earlier days"
+          aria-label="Scroll days left"
           icon={<Icon icon={ChevronLeftOutline} />}
-          disabled={start === 0}
-          onClick={() => setStart(Math.max(0, start - VISIBLE_DAYS))}
+          onClick={() => scrollBy(-1)}
         />
-        <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-7">
-          {visible.map((d) => {
+        <div
+          ref={grab.ref}
+          {...grab.props}
+          className={cn(
+            "horizontal-scrollbar relative scrollbar-sm flex flex-1 cursor-grab snap-x gap-2 overflow-x-auto pb-2 active:cursor-grabbing"
+          )}
+        >
+          {days.map((d) => {
             const l = dayLabel(d);
             const m = sumMinutes(byDay.get(d));
             const isSelected = selected === d;
+            const isToday = d === today;
             return (
               <button
                 key={d}
                 type="button"
+                data-day={d}
                 aria-pressed={isSelected}
                 onClick={() => setSelected(isSelected ? null : d)}
                 className={cn(
-                  "flex flex-col rounded-lg border px-3 py-2 text-left transition-colors",
+                  "flex w-28 shrink-0 snap-start flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-colors select-none",
                   isSelected
                     ? "border-accent-strong bg-accent-subtle"
-                    : d === today
-                      ? "border-accent-strong bg-layer-1 hover:bg-layer-transparent-hover"
-                      : "border-subtle bg-layer-1 hover:bg-layer-transparent-hover"
+                    : "border-subtle bg-layer-1 hover:bg-layer-transparent-hover"
                 )}
               >
                 <span
                   className={cn(
-                    "text-caption-md-medium",
-                    isSelected || d === today ? "text-accent-primary" : "text-tertiary"
+                    "flex items-center gap-1.5 text-caption-md-medium",
+                    isSelected || isToday ? "text-accent-primary" : "text-tertiary"
                   )}
                 >
                   {l.weekday} {fromIsoDay(d).getDate()}
-                  {d.slice(5, 7) !== days[0].slice(5, 7) || fromIsoDay(d).getDate() === 1
-                    ? ` ${fromIsoDay(d).toLocaleDateString(undefined, { month: "short" })}`
-                    : ""}
+                  {(fromIsoDay(d).getDate() === 1 || d === days[0]) &&
+                    ` ${fromIsoDay(d).toLocaleDateString(undefined, { month: "short" })}`}
+                  {isToday && <span className="size-1.5 rounded-full bg-accent-primary" aria-label="Today" />}
                 </span>
-                <span className={cn("text-body-md-semibold", m ? "text-primary" : "text-placeholder")}>
+                <span className={cn("text-h5-semibold", m ? "text-primary" : "text-placeholder")}>
                   {m ? formatMinutes(m) : "–"}
                 </span>
               </button>
@@ -277,72 +312,83 @@ const MyTime = observer(function MyTime({
         <IconButton
           variant="ghost"
           size="md"
-          aria-label="Later days"
+          aria-label="Scroll days right"
           icon={<Icon icon={ChevronRightOutline} />}
-          disabled={start + VISIBLE_DAYS >= days.length}
-          onClick={() => setStart(Math.max(0, Math.min(days.length - VISIBLE_DAYS, start + VISIBLE_DAYS)))}
+          onClick={() => scrollBy(1)}
         />
       </div>
 
       {selected && (
-        <div className="flex items-center gap-2 text-body-sm-regular text-secondary">
-          Showing {dayLabel(selected).weekday}, {dayLabel(selected).date}
-          <Button variant="tertiary" size="sm" stretch="auto" label="Show all days" onClick={() => setSelected(null)} />
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-layer-1 px-4 py-2.5">
+          <span className="text-body-sm-regular text-secondary">
+            Showing only{" "}
+            <span className="text-body-sm-medium text-primary">
+              {dayLabel(selected).weekday}, {dayLabel(selected).date}
+            </span>{" "}
+            · {formatMinutes(sumMinutes(byDay.get(selected)))}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            stretch="auto"
+            label={`Show all · ${wholeRange}`}
+            onClick={() => setSelected(null)}
+          />
         </div>
       )}
 
       {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
       {!error && !isLoading && !shownDays.length && (
-        <div className="rounded-lg border border-dashed border-subtle px-4 py-10 text-center text-body-sm-regular text-tertiary">
-          {selected ? "Nothing logged on this day." : "Nothing logged in these dates yet."} Use the form above to log
-          time.
+        <div className="rounded-lg border border-dashed border-subtle px-4 py-12 text-center text-body-sm-regular text-tertiary">
+          {selected ? "Nothing logged on this day." : "Nothing logged in these dates yet."}
         </div>
       )}
 
-      {shownDays.map((d) => {
-        const list = byDay.get(d) ?? [];
-        const l = dayLabel(d);
-        return (
-          <section key={d} className="overflow-hidden rounded-lg border border-subtle">
-            <div className="flex items-center justify-between bg-layer-1 px-4 py-2">
-              <span className="text-body-sm-medium text-primary">
-                {l.weekday}, {l.date}
-                {d === today && <span className="ml-2 text-caption-md-medium text-accent-primary">Today</span>}
-              </span>
-              <span className="text-body-sm-medium text-primary">{formatMinutes(sumMinutes(list))}</span>
-            </div>
-            <ul className="divide-y divide-subtle">
-              {list.map((e) => (
-                <li key={e.id} className="group flex items-start gap-3 px-4 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/${workspaceSlug}/browse/${e.issue.key}/`}
-                      className="flex min-w-0 items-center gap-2 text-body-sm-regular text-primary hover:underline"
-                    >
-                      <span className="shrink-0 text-caption-md-medium text-tertiary">{e.issue.key}</span>
-                      <span className="truncate">{e.issue.name}</span>
-                    </Link>
-                    <p className="text-caption-md-regular text-tertiary">{e.project.name}</p>
-                    {e.comment && (
-                      <p className="mt-1 text-body-sm-regular whitespace-pre-line text-secondary">{e.comment}</p>
-                    )}
-                  </div>
-                  <span className="shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
-                  <span className="opacity-60 group-hover:opacity-100">
-                    <IconButton
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Remove entry"
-                      icon={<Icon icon={DeleteOutline} />}
-                      onClick={() => void remove(e)}
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      <div className="flex flex-col gap-4">
+        {shownDays.map((d) => {
+          const list = byDay.get(d) ?? [];
+          const l = dayLabel(d);
+          return (
+            <section key={d} className="overflow-hidden rounded-lg border border-subtle">
+              <div className="flex items-center justify-between bg-layer-1 px-4 py-2.5">
+                <span className="text-body-sm-medium text-primary">
+                  {l.weekday}, {l.date}
+                  {d === today && <span className="ml-2 text-caption-md-medium text-accent-primary">Today</span>}
+                </span>
+                <span className="text-body-sm-medium text-primary">{formatMinutes(sumMinutes(list))}</span>
+              </div>
+              <ul className="divide-y divide-subtle">
+                {list.map((e) => (
+                  <li key={e.id} className="group flex items-start gap-4 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/${workspaceSlug}/browse/${e.issue.key}/`}
+                        className="block truncate text-body-sm-medium text-primary hover:underline"
+                      >
+                        {e.issue.name}
+                      </Link>
+                      <p className="truncate text-caption-md-regular text-tertiary">{e.project.name}</p>
+                      {e.comment && (
+                        <p className="mt-1.5 text-body-sm-regular whitespace-pre-line text-secondary">{e.comment}</p>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-body-sm-medium text-primary">{formatMinutes(e.minutes)}</span>
+                    <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <IconButton
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Remove entry"
+                        icon={<Icon icon={DeleteOutline} />}
+                        onClick={() => void remove(e)}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 });
@@ -399,9 +445,9 @@ const TeamTime = observer(function TeamTime({
     });
 
   return (
-    <div className="flex flex-col gap-4 pt-4">
+    <div className="flex flex-col gap-5 pt-5">
       <RangeTotal
-        label="team time"
+        label="Team time"
         minutes={sumMinutes(entries)}
         range={range}
         extra={`${groups.length} ${groups.length === 1 ? "person" : "people"}`}
@@ -465,25 +511,25 @@ const TeamTime = observer(function TeamTime({
 
       {error && <p className="text-body-sm-regular text-danger-primary">{(error as Error).message}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-subtle">
+      <div className="horizontal-scrollbar scrollbar-sm overflow-x-auto rounded-lg border border-subtle">
         <table className="w-full border-collapse text-body-sm-regular">
           <thead>
             <tr className="bg-layer-1 text-left">
-              <th className="sticky left-0 z-10 min-w-56 bg-layer-1 px-4 py-2.5 text-caption-md-medium text-tertiary">
+              <th className="sticky left-0 z-10 min-w-56 bg-layer-1 px-4 py-3 text-caption-md-medium text-tertiary">
                 Person {isLoading && <span className="ml-1">· loading…</span>}
               </th>
               {days.map((d) => (
                 <th
                   key={d}
                   className={cn(
-                    "min-w-16 px-2 py-2.5 text-center text-caption-md-medium whitespace-nowrap",
+                    "min-w-16 px-2 py-3 text-center text-caption-md-medium whitespace-nowrap",
                     d === today ? "text-accent-primary" : "text-tertiary"
                   )}
                 >
                   {dayLabel(d).weekday} {fromIsoDay(d).getDate()}
                 </th>
               ))}
-              <th className="sticky right-0 z-10 min-w-20 bg-layer-1 px-4 py-2.5 text-right text-caption-md-medium text-tertiary">
+              <th className="sticky right-0 z-10 min-w-20 bg-layer-1 px-4 py-3 text-right text-caption-md-medium text-tertiary">
                 Total
               </th>
             </tr>
@@ -491,7 +537,7 @@ const TeamTime = observer(function TeamTime({
           <tbody>
             {!isLoading && !groups.length && (
               <tr>
-                <td colSpan={days.length + 2} className="px-4 py-10 text-center text-tertiary">
+                <td colSpan={days.length + 2} className="px-4 py-12 text-center text-tertiary">
                   Nobody has logged time in these dates{projectId || person ? " with these filters" : ""}.
                 </td>
               </tr>
@@ -510,15 +556,13 @@ const TeamTime = observer(function TeamTime({
           {groups.length > 1 && (
             <tfoot>
               <tr className="border-t border-subtle bg-layer-1 text-body-sm-medium text-primary">
-                <td className="sticky left-0 bg-layer-1 px-4 py-2.5">Total</td>
+                <td className="sticky left-0 bg-layer-1 px-4 py-3">Total</td>
                 {days.map((d) => (
-                  <td key={d} className="px-2 py-2.5 text-center">
+                  <td key={d} className="px-2 py-3 text-center">
                     {dayTotals[d] ? formatMinutes(dayTotals[d]) : "–"}
                   </td>
                 ))}
-                <td className="sticky right-0 bg-layer-1 px-4 py-2.5 text-right">
-                  {formatMinutes(sumMinutes(entries))}
-                </td>
+                <td className="sticky right-0 bg-layer-1 px-4 py-3 text-right">{formatMinutes(sumMinutes(entries))}</td>
               </tr>
             </tfoot>
           )}
@@ -544,7 +588,7 @@ function PersonRows({
   return (
     <>
       <tr className="cursor-pointer border-t border-subtle hover:bg-layer-transparent-hover" onClick={onToggle}>
-        <td className="sticky left-0 bg-surface-1 px-4 py-2.5">
+        <td className="sticky left-0 bg-surface-1 px-4 py-3">
           <span className="flex items-center gap-2 text-body-sm-medium text-primary">
             <ChevronRightOutline
               className={cn("size-3.5 shrink-0 text-tertiary transition-transform", open && "rotate-90")}
@@ -553,29 +597,31 @@ function PersonRows({
           </span>
         </td>
         {days.map((d) => (
-          <td key={d} className={cn("px-2 py-2.5 text-center text-secondary", d === today && "bg-accent-subtle")}>
+          <td key={d} className={cn("px-2 py-3 text-center text-secondary", d === today && "bg-accent-subtle")}>
             {group.perDay[d] ? formatMinutes(group.perDay[d]) : <span className="text-placeholder">–</span>}
           </td>
         ))}
-        <td className="sticky right-0 bg-surface-1 px-4 py-2.5 text-right text-body-sm-medium text-primary">
+        <td className="sticky right-0 bg-surface-1 px-4 py-3 text-right text-body-sm-medium text-primary">
           {formatMinutes(group.total)}
         </td>
       </tr>
       {open &&
         group.rows.map((r) => (
           <tr key={r.key} className="border-t border-subtle bg-layer-1">
-            <td className="sticky left-0 max-w-72 bg-layer-1 py-2 pr-4 pl-10">
+            <td className="sticky left-0 max-w-72 bg-layer-1 py-2.5 pr-4 pl-10">
               <Link href={r.href} className="block truncate text-primary hover:underline">
                 {r.label}
               </Link>
               <span className="block truncate text-caption-md-regular text-tertiary">{r.sub}</span>
             </td>
             {days.map((d) => (
-              <td key={d} className="px-2 py-2 text-center text-tertiary">
+              <td key={d} className="px-2 py-2.5 text-center text-tertiary">
                 {r.perDay[d] ? formatMinutes(r.perDay[d]) : ""}
               </td>
             ))}
-            <td className="sticky right-0 bg-layer-1 px-4 py-2 text-right text-secondary">{formatMinutes(r.total)}</td>
+            <td className="sticky right-0 bg-layer-1 px-4 py-2.5 text-right text-secondary">
+              {formatMinutes(r.total)}
+            </td>
           </tr>
         ))}
     </>

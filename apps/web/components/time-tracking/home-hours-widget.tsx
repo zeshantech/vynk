@@ -18,10 +18,10 @@ import { useUser, useUserPermissions } from "@/hooks/store/user";
 // services
 import { timeEntryService } from "@/services/time-entry.service";
 // local
-import { QuickLog } from "./quick-log";
+import { LogTimeButton } from "./log-time-drawer";
 import { formatMinutes, groupByProject, groupEntries, rangeLabel, weekDays } from "./utils";
 
-/** Home: log time right away, and this week's hours by project and task (admins can switch to the team). */
+/** Home: this week's hours by project and task (admins can switch to the team), and a "Log time" button. */
 export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug }: { workspaceSlug: string }) {
   const { data: me } = useUser();
   const { allowPermissions } = useUserPermissions();
@@ -42,14 +42,15 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
   );
   const people = useMemo(() => groupEntries(entries ?? [], workspaceSlug), [entries, workspaceSlug]);
   const shownTotal = projects.reduce((s, p) => s + p.total, 0);
+  const empty = entries && projects.length === 0;
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ClockOutline className="size-4 text-secondary" />
           <h3 className="text-body-md-semibold text-primary">Time this week</h3>
-          <span className="text-caption-md-regular text-tertiary">{rangeLabel(days)}</span>
+          <span className="text-body-sm-regular text-tertiary">{rangeLabel(days)}</span>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
@@ -62,86 +63,71 @@ export const HomeHoursWidget = observer(function HomeHoursWidget({ workspaceSlug
           )}
           <Button
             variant="tertiary"
-            size="sm"
+            size="md"
             stretch="auto"
-            label="Open timesheet"
+            label="Timesheet"
             nativeButton={false}
             render={<Link href={`/${workspaceSlug}/timesheet/`} />}
           />
+          <LogTimeButton workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
         </div>
       </div>
 
-      <QuickLog workspaceSlug={workspaceSlug} onLogged={() => void refresh()} />
-
-      <div className="grid gap-3 md:grid-cols-[200px_minmax(0,1fr)]">
-        <div className="flex flex-row gap-3 md:flex-col">
-          <Stat label={view === "team" ? "Team this week" : "You this week"} value={formatMinutes(shownTotal)} />
-          {view === "team" && <Stat label="People logging" value={String(people.length)} />}
+      <div className="grid gap-4 rounded-lg border border-subtle bg-layer-1 p-5 md:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="flex flex-col gap-1 md:border-r md:border-subtle md:pr-5">
+          <span className="text-body-sm-regular text-tertiary">{view === "team" ? "Team total" : "Your total"}</span>
+          <span className="text-h3-semibold text-primary">{formatMinutes(shownTotal)}</span>
+          {view === "team" && (
+            <span className="text-body-sm-regular text-tertiary">
+              {people.length} {people.length === 1 ? "person" : "people"} logging
+            </span>
+          )}
         </div>
 
-        <div className="rounded-lg border border-subtle bg-layer-1 p-4">
-          {entries && projects.length === 0 ? (
-            <p className="text-body-sm-regular text-tertiary">
-              {view === "team" ? "Nobody has logged time this week yet." : "You haven't logged time this week yet."}
-            </p>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="flex flex-col gap-3">
-                <h4 className="text-caption-md-medium text-tertiary">By project and task</h4>
-                {projects.map((p) => (
-                  <div key={p.id} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-3 text-body-sm-medium text-primary">
-                      <span className="truncate">{p.name}</span>
-                      <span className="shrink-0">{formatMinutes(p.total)}</span>
-                    </div>
-                    <div className="h-1 overflow-hidden rounded-full bg-layer-2">
-                      <div
-                        className="h-full rounded-full bg-accent-primary"
-                        style={{ width: `${Math.max(4, (p.total / Math.max(shownTotal, 1)) * 100)}%` }}
-                      />
-                    </div>
-                    {p.tasks.slice(0, 3).map((t) => (
-                      <Link
-                        key={t.id}
-                        href={t.href}
-                        className="flex items-center justify-between gap-3 text-caption-md-regular text-secondary hover:text-primary"
-                      >
-                        <span className="truncate">
-                          <span className="text-tertiary">{t.key}</span> {t.name}
-                        </span>
-                        <span className="shrink-0">{formatMinutes(t.total)}</span>
-                      </Link>
-                    ))}
-                    {p.tasks.length > 3 && (
-                      <span className="text-caption-md-regular text-tertiary">+{p.tasks.length - 3} more tasks</span>
-                    )}
+        {empty ? (
+          <p className="self-center text-body-sm-regular text-tertiary">
+            {view === "team" ? "Nobody has logged time this week yet." : "You haven't logged time this week yet."}
+          </p>
+        ) : (
+          <div className="grid gap-x-8 gap-y-5 lg:grid-cols-2">
+            {projects.map((p) => (
+              <div key={p.id} className="flex min-w-0 flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3 text-body-sm-medium text-primary">
+                  <span className="truncate">{p.name}</span>
+                  <span className="shrink-0">{formatMinutes(p.total)}</span>
+                </div>
+                {p.tasks.slice(0, 4).map((t) => (
+                  <Link
+                    key={t.id}
+                    href={t.href}
+                    className="flex items-center justify-between gap-3 text-body-sm-regular text-secondary hover:text-primary"
+                  >
+                    <span className="truncate">{t.name}</span>
+                    <span className="shrink-0 text-tertiary">{formatMinutes(t.total)}</span>
+                  </Link>
+                ))}
+                {p.tasks.length > 4 && (
+                  <span className="text-caption-md-regular text-tertiary">+{p.tasks.length - 4} more</span>
+                )}
+              </div>
+            ))}
+            {view === "team" && (
+              <div className="flex min-w-0 flex-col gap-1.5 lg:col-span-2">
+                <span className="text-body-sm-medium text-primary">By person</span>
+                {people.map((g) => (
+                  <div
+                    key={g.userId}
+                    className="flex items-center justify-between gap-3 text-body-sm-regular text-secondary"
+                  >
+                    <span className="truncate">{g.name}</span>
+                    <span className="shrink-0 text-tertiary">{formatMinutes(g.total)}</span>
                   </div>
                 ))}
               </div>
-              {view === "team" && (
-                <div className="flex flex-col gap-2">
-                  <h4 className="text-caption-md-medium text-tertiary">By person</h4>
-                  {people.map((g) => (
-                    <div key={g.userId} className="flex items-center justify-between gap-3 text-body-sm-regular">
-                      <span className="truncate text-secondary">{g.name}</span>
-                      <span className="shrink-0 text-primary">{formatMinutes(g.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
 });
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-1 flex-col rounded-lg border border-subtle bg-layer-1 px-4 py-3">
-      <span className="text-caption-md-medium text-tertiary">{label}</span>
-      <span className="text-h4-semibold text-primary">{value}</span>
-    </div>
-  );
-}

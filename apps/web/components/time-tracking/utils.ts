@@ -98,7 +98,7 @@ export const groupEntries = (entries: TTimeEntry[], workspaceSlug: string): TShe
       row = {
         key: e.issue.id,
         label: e.issue.name,
-        sub: `${e.issue.key} · ${e.project.name}`,
+        sub: e.project.name,
         href: `/${workspaceSlug}/browse/${e.issue.key}/`,
         perDay: {},
         total: 0,
